@@ -3075,7 +3075,7 @@ void XWindowSystem::handleButtonPressEvent (LinuxComponentPeer<::Window>* peer, 
     peer->toFront (true);
     peer->handleMouseEvent (MouseInputSource::InputSourceType::mouse, getLogicalMousePos (buttonPressEvent, peer->getPlatformScaleFactor()),
                             ModifierKeys::currentModifiers, MouseInputSource::invalidPressure,
-                            MouseInputSource::invalidOrientation, getEventTime (buttonPressEvent), {});
+                            MouseInputSource::invalidOrientation, getEventTime (buttonPressEvent));
 }
 
 void XWindowSystem::handleButtonPressEvent (LinuxComponentPeer<::Window>* peer, const XButtonPressedEvent& buttonPressEvent) const
