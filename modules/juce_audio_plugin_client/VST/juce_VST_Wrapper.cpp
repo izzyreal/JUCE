@@ -203,9 +203,9 @@ struct SharedMessageThread  : public Thread
     void run() override
     {
         initialiseJuce_GUI();
-        initialised = true;
 
         MessageManager::getInstance()->setCurrentThreadAsMessageThread();
+        initialised = true;
 
         XWindowSystem::getInstance();
 
