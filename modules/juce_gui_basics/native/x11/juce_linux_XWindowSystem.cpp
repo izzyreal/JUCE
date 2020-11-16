@@ -2582,8 +2582,9 @@ void XWindowSystem::setWindowType (::Window windowH, int styleFlags) const
 
     Atom netHints [2];
 
-    if ((styleFlags & ComponentPeer::windowIsTemporary) != 0
-        || ((styleFlags & ComponentPeer::windowHasDropShadow) == 0 && Desktop::canUseSemiTransparentWindows()))
+    if (styleFlags & ComponentPeer::windowIsTemporary)
+        netHints [0] = XWindowSystemUtilities::Atoms::getIfExists (display, "_NET_WM_WINDOW_TYPE_TOOLTIP");
+    else if ((styleFlags & ComponentPeer::windowHasDropShadow) == 0 && Desktop::canUseSemiTransparentWindows())
         netHints [0] = XWindowSystemUtilities::Atoms::getIfExists (display, "_NET_WM_WINDOW_TYPE_COMBO");
     else
         netHints [0] = XWindowSystemUtilities::Atoms::getIfExists (display, "_NET_WM_WINDOW_TYPE_NORMAL");
