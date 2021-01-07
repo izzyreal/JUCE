@@ -155,7 +155,10 @@ public:
         MessageManager::getInstance()->setCurrentThreadAsMessageThread();
         initialised = true;
 
-        MessageManager::getInstance()->runDispatchLoop();
+        XWindowSystem::getInstance();
+
+        while ((! threadShouldExit()) && MessageManager::getInstance()->runDispatchLoopUntil (250))
+        {}
     }
 
 private:
@@ -857,9 +860,9 @@ public:
 
         portAudioIns.insertMultiple (0, nullptr, numInChans);
         portAudioOuts.insertMultiple (0, nullptr, numOutChans);
-        portControls.insertMultiple (0, nullptr, filter->getNumParameters());
+        portControls.insertMultiple (0, nullptr, filter->getParameters().size());
 
-        for (int i=0; i < filter->getNumParameters(); ++i)
+        for (int i=0; i < filter->getParameters().size(); ++i)
             lastControlValues.add (filter->getParameter(i));
 
         curPosInfo.resetToDefault();
@@ -1009,7 +1012,7 @@ public:
             }
         }
 
-        for (int i=0; i < filter->getNumParameters(); ++i)
+        for (int i=0; i < filter->getParameters().size(); ++i)
         {
             if (portId == index++)
             {
