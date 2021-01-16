@@ -793,6 +793,7 @@ public:
 
     bool redirectKeyDown (NSEvent* ev)
     {
+        handleRawKeyEvent(KeyEvent([ev keyCode], true));
         // (need to retain this in case a modal loop runs in handleKeyEvent and
         // our event object gets lost)
         const std::unique_ptr<NSEvent, NSObjectDeleter> r ([ev retain]);
@@ -817,13 +818,15 @@ public:
 
     bool redirectKeyUp (NSEvent* ev)
     {
+        handleRawKeyEvent(KeyEvent([ev keyCode], false));
         updateKeysDown (ev, false);
         return handleKeyEvent (ev, false)
                 || Component::getCurrentlyModalComponent() != nullptr;
     }
-
+    
     void redirectModKeyChange (NSEvent* ev)
     {
+        handleRawKeyEvent(KeyEvent([ev keyCode], false));
         // (need to retain this in case a modal loop runs and our event object gets lost)
         const std::unique_ptr<NSEvent, NSObjectDeleter> r ([ev retain]);
 
