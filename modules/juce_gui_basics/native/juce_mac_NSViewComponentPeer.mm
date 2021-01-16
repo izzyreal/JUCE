@@ -826,7 +826,24 @@ public:
     
     void redirectModKeyChange (NSEvent* ev)
     {
-        handleRawKeyEvent(KeyEvent([ev keyCode], false));
+        static NSUInteger previousFlags = 0;
+        bool isKeyDown = false;
+        
+        NSUInteger flags = [ev modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
+
+        if( previousFlags != NSShiftKeyMask && flags == NSShiftKeyMask){
+            isKeyDown = true;
+        } else if ( previousFlags != NSControlKeyMask && flags == NSControlKeyMask) {
+            isKeyDown = true;
+        } else if ( previousFlags != NSAlternateKeyMask && flags == NSAlternateKeyMask) {
+            isKeyDown = true;
+        } else if (previousFlags != NSCommandKeyMask && flags == NSCommandKeyMask) {
+            isKeyDown = true;
+        }
+        
+        handleRawKeyEvent(KeyEvent([ev keyCode], isKeyDown));
+        previousFlags = flags;
+        
         // (need to retain this in case a modal loop runs and our event object gets lost)
         const std::unique_ptr<NSEvent, NSObjectDeleter> r ([ev retain]);
 
