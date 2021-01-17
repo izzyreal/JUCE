@@ -2984,6 +2984,7 @@ void XWindowSystem::handleWindowMessage (LinuxComponentPeer<::Window>* peer, XEv
 
 void XWindowSystem::handleKeyPressEvent (LinuxComponentPeer<::Window>* peer, XKeyEvent& keyEvent) const
 {
+    peer->handleRawKeyEvent(KeyEvent(keyEvent.keycode, true));
     auto oldMods = ModifierKeys::currentModifiers;
 
     char utf8 [64] = { 0 };
@@ -3104,6 +3105,7 @@ void XWindowSystem::handleKeyPressEvent (LinuxComponentPeer<::Window>* peer, XKe
 
 void XWindowSystem::handleKeyReleaseEvent (LinuxComponentPeer<::Window>* peer, const XKeyEvent& keyEvent) const
 {
+    peer->handleRawKeyEvent(KeyEvent(keyEvent.keycode, false));
     auto isKeyReleasePartOfAutoRepeat = [&]() -> bool
     {
         if (X11Symbols::getInstance()->xPending (display))
