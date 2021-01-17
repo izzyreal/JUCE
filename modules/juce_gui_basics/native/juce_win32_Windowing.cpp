@@ -2984,6 +2984,7 @@ private:
 
     bool doKeyUp (const WPARAM key)
     {
+        handleRawKeyEvent(KeyEvent(key, false));
         updateKeyModifiers();
 
         switch (key)
@@ -3012,6 +3013,7 @@ private:
 
     bool doKeyDown (const WPARAM key)
     {
+        handleRawKeyEvent(KeyEvent(key, true));
         updateKeyModifiers();
         bool used = false;
 
