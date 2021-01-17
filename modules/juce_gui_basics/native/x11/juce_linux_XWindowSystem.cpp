@@ -3105,7 +3105,6 @@ void XWindowSystem::handleKeyPressEvent (LinuxComponentPeer<::Window>* peer, XKe
 
 void XWindowSystem::handleKeyReleaseEvent (LinuxComponentPeer<::Window>* peer, const XKeyEvent& keyEvent) const
 {
-    peer->handleRawKeyEvent(KeyEvent(keyEvent.keycode, false));
     auto isKeyReleasePartOfAutoRepeat = [&]() -> bool
     {
         if (X11Symbols::getInstance()->xPending (display))
@@ -3124,6 +3123,7 @@ void XWindowSystem::handleKeyReleaseEvent (LinuxComponentPeer<::Window>* peer, c
 
     if (! isKeyReleasePartOfAutoRepeat)
     {
+        peer->handleRawKeyEvent(KeyEvent(keyEvent.keycode, false));
         updateKeyStates ((int) keyEvent.keycode, false);
         KeySym sym;
 
