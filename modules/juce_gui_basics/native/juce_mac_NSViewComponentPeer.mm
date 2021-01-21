@@ -1708,6 +1708,50 @@ struct JuceNSViewClass   : public ObjCClass<NSView>
         JUCE_END_IGNORE_WARNINGS_GCC_LIKE
 
         addProtocol (@protocol (NSTextInput));
+        
+        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp
+                                              handler:^NSEvent*(NSEvent* event)
+        {
+            DBG("Key up " + String([event keyCode]));
+            return event;
+        }];
+
+        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+                                              handler:^NSEvent*(NSEvent* event)
+        {
+            DBG("Key down " + String([event keyCode]));
+            return event;
+        }];
+        
+        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
+                                              handler:^NSEvent*(NSEvent* event)
+        {
+            if ([event keyCode] == 0x3A) {
+            if ([event modifierFlags] & NSEventModifierFlagOption) {
+                DBG("alt down");
+            } else if ([event modifierFlags] | NSEventModifierFlagOption) {
+                DBG("alt up");
+            }
+            }
+
+            if ([event keyCode] == 0x38) {
+            if ([event modifierFlags] & NSEventModifierFlagShift) {
+                DBG("shift down");
+            } else if ([event modifierFlags] | NSEventModifierFlagShift) {
+                DBG("shift up");
+            }
+            }
+            
+            if ([event keyCode] == 0x3B) {
+            if ([event modifierFlags] & NSEventModifierFlagControl) {
+                DBG("ctrl down");
+            } else if ([event modifierFlags] | NSEventModifierFlagControl) {
+                DBG("ctrl up");
+            }
+            }
+
+            return event;
+        }];
 
         registerClass();
     }
