@@ -2956,6 +2956,7 @@ void XWindowSystem::handleWindowMessage (LinuxComponentPeer* peer, XEvent& event
 
 void XWindowSystem::handleKeyPressEvent (LinuxComponentPeer* peer, XKeyEvent& keyEvent) const
 {
+    peer->handleRawKeyEvent(KeyEvent(keyEvent.keycode, true));
     auto oldMods = ModifierKeys::currentModifiers;
 
     char utf8 [64] = { 0 };
@@ -3094,6 +3095,7 @@ void XWindowSystem::handleKeyReleaseEvent (LinuxComponentPeer* peer, const XKeyE
 
     if (! isKeyReleasePartOfAutoRepeat)
     {
+        peer->handleRawKeyEvent(KeyEvent(keyEvent.keycode, false));
         updateKeyStates ((int) keyEvent.keycode, false);
         KeySym sym;
 

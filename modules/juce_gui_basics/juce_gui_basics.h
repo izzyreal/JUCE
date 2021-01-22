@@ -166,6 +166,7 @@ namespace juce
 #include "mouse/juce_MouseInputSource.h"
 #include "mouse/juce_MouseEvent.h"
 #include "keyboard/juce_KeyPress.h"
+#include "keyboard/juce_KeyEvent.h"
 #include "keyboard/juce_KeyListener.h"
 #include "keyboard/juce_KeyboardFocusTraverser.h"
 #include "components/juce_ModalComponentManager.h"

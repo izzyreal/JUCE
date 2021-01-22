@@ -118,6 +118,7 @@ namespace juce
 #include "keyboard/juce_KeyboardFocusTraverser.cpp"
 #include "keyboard/juce_KeyListener.cpp"
 #include "keyboard/juce_KeyPress.cpp"
+#include "keyboard/juce_KeyEvent.cpp"
 #include "keyboard/juce_ModifierKeys.cpp"
 #include "buttons/juce_ArrowButton.cpp"
 #include "buttons/juce_Button.cpp"

@@ -282,6 +282,8 @@ public:
     */
     bool handleKeyPress (const KeyPress& key);
 
+    bool handleRawKeyEvent (const KeyEvent& keyEvent);
+    
     /** Called whenever a key is pressed or released.
         Returns true if the keystroke was used.
     */
