@@ -87,6 +87,8 @@ public:
           isSharedWindow (viewToAttachTo != nil),
           lastRepaintTime (Time::getMillisecondCounter())
     {
+        installKeyboardHandler();
+        
         appFocusChangeCallback = appFocusChanged;
         isEventBlockedByModalComps = checkEventBlockedByModalComps;
 
@@ -209,6 +211,8 @@ public:
 
     ~NSViewComponentPeer() override
     {
+        removeKeyboardHandler();
+        
         [notificationCenter removeObserver: view];
         setOwner (view, nullptr);
 
@@ -800,7 +804,6 @@ public:
 
     bool redirectKeyDown (NSEvent* ev)
     {
-        handleRawKeyEvent(KeyEvent([ev keyCode], true));
         // (need to retain this in case a modal loop runs in handleKeyEvent and
         // our event object gets lost)
         const std::unique_ptr<NSEvent, NSObjectDeleter> r ([ev retain]);
@@ -825,7 +828,6 @@ public:
 
     bool redirectKeyUp (NSEvent* ev)
     {
-        handleRawKeyEvent(KeyEvent([ev keyCode], false));
         updateKeysDown (ev, false);
         return handleKeyEvent (ev, false)
                 || Component::getCurrentlyModalComponent() != nullptr;
@@ -833,24 +835,6 @@ public:
     
     void redirectModKeyChange (NSEvent* ev)
     {
-        static NSUInteger previousFlags = 0;
-        bool isKeyDown = false;
-        
-        NSUInteger flags = [ev modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
-
-        if( previousFlags != NSShiftKeyMask && flags == NSShiftKeyMask){
-            isKeyDown = true;
-        } else if ( previousFlags != NSControlKeyMask && flags == NSControlKeyMask) {
-            isKeyDown = true;
-        } else if ( previousFlags != NSAlternateKeyMask && flags == NSAlternateKeyMask) {
-            isKeyDown = true;
-        } else if (previousFlags != NSCommandKeyMask && flags == NSCommandKeyMask) {
-            isKeyDown = true;
-        }
-        
-        handleRawKeyEvent(KeyEvent([ev keyCode], isKeyDown));
-        previousFlags = flags;
-        
         // (need to retain this in case a modal loop runs and our event object gets lost)
         const std::unique_ptr<NSEvent, NSObjectDeleter> r ([ev retain]);
 
@@ -861,6 +845,92 @@ public:
         handleModifierKeysChange();
     }
 
+    void removeKeyboardHandler()
+    {
+        if (_keyDownHandler) {
+            [NSEvent removeMonitor:_keyDownHandler];
+            _keyDownHandler = nil;
+        }
+        if (_keyUpHandler) {
+            [NSEvent removeMonitor:_keyUpHandler];
+            _keyUpHandler = nil;
+        }
+        if (_modifierKeyHandler) {
+            [NSEvent removeMonitor:_modifierKeyHandler];
+            _modifierKeyHandler = nil;
+        }
+    }
+    
+    void installKeyboardHandler()
+    {
+        removeKeyboardHandler();
+        
+        _keyDownHandler = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+                                              handler:^NSEvent*(NSEvent* event)
+        {
+            handleRawKeyEvent(KeyEvent([event keyCode], true));
+            return event;
+        }];
+        
+        _keyUpHandler = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp
+                                              handler:^NSEvent*(NSEvent* event)
+        {
+            handleRawKeyEvent(KeyEvent([event keyCode], false));
+            return event;
+        }];
+
+        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
+                                              handler:^NSEvent*(NSEvent* event)
+        {
+            auto code = [event keyCode];
+            
+            if (code == 0x3A || code == 0x3D) {
+                if ([event modifierFlags] & NSEventModifierFlagOption) {
+                    handleRawKeyEvent(KeyEvent(code, true));
+                } else if ([event modifierFlags] | NSEventModifierFlagOption) {
+                    handleRawKeyEvent(KeyEvent(code, false));
+                }
+            }
+            else if (code == 0x38 || code == 0x3C) {
+                if ([event modifierFlags] & NSEventModifierFlagShift) {
+                    handleRawKeyEvent(KeyEvent(code, true));
+                } else if ([event modifierFlags] | NSEventModifierFlagShift) {
+                    handleRawKeyEvent(KeyEvent(code, false));
+                }
+            }
+            else if (code == 0x3B || code == 0x3E) {
+                if ([event modifierFlags] & NSEventModifierFlagControl) {
+                    handleRawKeyEvent(KeyEvent(code, true));
+                } else if ([event modifierFlags] | NSEventModifierFlagControl) {
+                    handleRawKeyEvent(KeyEvent(code, false));
+                }
+            }
+            else if (code == 0x36 || code == 0x37) {
+                if ([event modifierFlags] & NSEventModifierFlagCommand) {
+                    handleRawKeyEvent(KeyEvent(code, true));
+                } else if ([event modifierFlags] | NSEventModifierFlagCommand) {
+                    handleRawKeyEvent(KeyEvent(code, false));
+                }
+            }
+            else if (code == 0x3F) {
+                if ([event modifierFlags] & NSEventModifierFlagFunction) {
+                    handleRawKeyEvent(KeyEvent(code, true));
+                } else if ([event modifierFlags] | NSEventModifierFlagFunction) {
+                    handleRawKeyEvent(KeyEvent(code, false));
+                }
+            }
+            else if (code == 0x39) {
+                if ([event modifierFlags] & NSEventModifierFlagCapsLock) {
+                    handleRawKeyEvent(KeyEvent(code, true));
+                } else if ([event modifierFlags] | NSEventModifierFlagCapsLock) {
+                    handleRawKeyEvent(KeyEvent(code, false));
+                }
+            }
+
+            return event;
+        }];
+    }
+    
     //==============================================================================
     void drawRect (NSRect r)
     {
@@ -1477,6 +1547,11 @@ public:
     //==============================================================================
     NSWindow* window = nil;
     NSView* view = nil;
+    
+    id _keyDownHandler = nil;
+    id _keyUpHandler = nil;
+    id _modifierKeyHandler = nil;
+    
     WeakReference<Component> safeComponent;
     bool isSharedWindow = false, fullScreen = false;
     bool isWindowInKioskMode = false;
@@ -1742,53 +1817,9 @@ struct JuceNSViewClass   : public ObjCClass<NSView>
         addMethod (NSViewComponentPeer::asyncMouseDownSelector, asyncMouseDown,           "v@:@");
         addMethod (NSViewComponentPeer::asyncMouseUpSelector,   asyncMouseUp,             "v@:@");
         addMethod (NSViewComponentPeer::frameChangedSelector,   frameChanged,             "v@:@");
-
+                
         addProtocol (@protocol (NSTextInput));
-        
-        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp
-                                              handler:^NSEvent*(NSEvent* event)
-        {
-            DBG("Key up " + String([event keyCode]));
-            return event;
-        }];
-
-        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
-                                              handler:^NSEvent*(NSEvent* event)
-        {
-            DBG("Key down " + String([event keyCode]));
-            return event;
-        }];
-        
-        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
-                                              handler:^NSEvent*(NSEvent* event)
-        {
-            if ([event keyCode] == 0x3A) {
-            if ([event modifierFlags] & NSEventModifierFlagOption) {
-                DBG("alt down");
-            } else if ([event modifierFlags] | NSEventModifierFlagOption) {
-                DBG("alt up");
-            }
-            }
-
-            if ([event keyCode] == 0x38) {
-            if ([event modifierFlags] & NSEventModifierFlagShift) {
-                DBG("shift down");
-            } else if ([event modifierFlags] | NSEventModifierFlagShift) {
-                DBG("shift up");
-            }
-            }
-            
-            if ([event keyCode] == 0x3B) {
-            if ([event modifierFlags] & NSEventModifierFlagControl) {
-                DBG("ctrl down");
-            } else if ([event modifierFlags] | NSEventModifierFlagControl) {
-                DBG("ctrl up");
-            }
-            }
-
-            return event;
-        }];
-
+                
         registerClass();
     }
 
@@ -1797,7 +1828,7 @@ private:
     {
         return getIvar<NSViewComponentPeer*> (self, "owner");
     }
-
+    
     static void mouseDown (id self, SEL s, NSEvent* ev)
     {
         if (JUCEApplicationBase::isStandaloneApp())
