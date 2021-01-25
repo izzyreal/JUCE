@@ -2959,8 +2959,7 @@ void XWindowSystem::handleWindowMessage (LinuxComponentPeer* peer, XEvent& event
 void XWindowSystem::handleKeyPressEvent (LinuxComponentPeer* peer, XKeyEvent& keyEvent) const
 {
 
-    auto keysym = (int) X11Symbols::getInstance()->xkbKeycodeToKeysym (display, (::KeyCode) keyEvent.keycode, 0,
-                                                                       ModifierKeys::currentModifiers.isShiftDown() ? 1 : 0);
+    auto keysym = (int) X11Symbols::getInstance()->xkbKeycodeToKeysym (display, (::KeyCode) keyEvent.keycode, 0, 0);
     peer->handleRawKeyEvent(KeyEvent(keysym, true));
     auto oldMods = ModifierKeys::currentModifiers;
 
@@ -2985,9 +2984,10 @@ void XWindowSystem::handleKeyPressEvent (LinuxComponentPeer* peer, XKeyEvent& ke
         keyCode = (int) unicodeChar;
 
         if (keyCode < 0x20)
-            keyCode = keysym;
-
-        keyDownChange = (sym != NoSymbol) && ! updateKeyModifiersFromSym (sym, true);
+            keyCode = (int) X11Symbols::getInstance()->xkbKeycodeToKeysym (display, (::KeyCode) keyEvent.keycode, 0,
+                                                                       ModifierKeys::currentModifiers.isShiftDown() ? 1 : 0);
+        
+	keyDownChange = (sym != NoSymbol) && ! updateKeyModifiersFromSym (sym, true);
     }
 
     bool keyPressed = false;
