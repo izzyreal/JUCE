@@ -25,6 +25,8 @@
 
 #include <unordered_map>
 
+#include <X11/XKBlib.h>
+
 namespace juce
 {
 
@@ -2956,7 +2958,10 @@ void XWindowSystem::handleWindowMessage (LinuxComponentPeer* peer, XEvent& event
 
 void XWindowSystem::handleKeyPressEvent (LinuxComponentPeer* peer, XKeyEvent& keyEvent) const
 {
-    peer->handleRawKeyEvent(KeyEvent(keyEvent.keycode, true));
+
+    auto keysym = (int) X11Symbols::getInstance()->xkbKeycodeToKeysym (display, (::KeyCode) keyEvent.keycode, 0,
+                                                                       ModifierKeys::currentModifiers.isShiftDown() ? 1 : 0);
+    peer->handleRawKeyEvent(KeyEvent(keysym, true));
     auto oldMods = ModifierKeys::currentModifiers;
 
     char utf8 [64] = { 0 };
@@ -2980,8 +2985,7 @@ void XWindowSystem::handleKeyPressEvent (LinuxComponentPeer* peer, XKeyEvent& ke
         keyCode = (int) unicodeChar;
 
         if (keyCode < 0x20)
-            keyCode = (int) X11Symbols::getInstance()->xkbKeycodeToKeysym (display, (::KeyCode) keyEvent.keycode, 0,
-                                                                           ModifierKeys::currentModifiers.isShiftDown() ? 1 : 0);
+            keyCode = keysym;
 
         keyDownChange = (sym != NoSymbol) && ! updateKeyModifiersFromSym (sym, true);
     }
@@ -3095,13 +3099,14 @@ void XWindowSystem::handleKeyReleaseEvent (LinuxComponentPeer* peer, const XKeyE
 
     if (! isKeyReleasePartOfAutoRepeat)
     {
-        peer->handleRawKeyEvent(KeyEvent(keyEvent.keycode, false));
+        auto keysym = X11Symbols::getInstance()->xkbKeycodeToKeysym (display, (::KeyCode) keyEvent.keycode, 0, 0);
+        peer->handleRawKeyEvent(KeyEvent(keysym, false));
         updateKeyStates ((int) keyEvent.keycode, false);
         KeySym sym;
 
         {
             XWindowSystemUtilities::ScopedXLock xLock;
-            sym = X11Symbols::getInstance()->xkbKeycodeToKeysym (display, (::KeyCode) keyEvent.keycode, 0, 0);
+	    sym = keysym;
         }
 
         auto oldMods = ModifierKeys::currentModifiers;
