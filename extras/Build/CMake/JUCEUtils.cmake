@@ -1337,16 +1337,14 @@ function(_juce_set_plugin_target_properties shared_code_target kind)
                 LIBRARY_OUTPUT_DIRECTORY "${output_path}")
         endif()
 
-        if(DEFINED JUCE_SOURCE_DIR)
-       	    # generate .ttl files
-            add_executable(lv2_ttl_generator ${JUCE_SOURCE_DIR}/extras/Build/lv2_ttl_generator/lv2_ttl_generator.c)
-            target_link_libraries(lv2_ttl_generator dl)
-            add_custom_command(TARGET ${target_name} POST_BUILD
-                COMMAND lv2_ttl_generator "${output_path}/${shared_code_target}.so"
-                DEPENDS ${target_name} lv2_ttl_generator
-                WORKING_DIRECTORY "${products_folder}/${product_name}.lv2/"
-                VERBATIM)
-        endif()
+       	# generate .ttl files
+        add_executable(lv2_ttl_generator "${JUCE_CMAKE_UTILS_DIR}/lv2_ttl_generator.c")
+        target_link_libraries(lv2_ttl_generator dl)
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND lv2_ttl_generator "${output_path}/${product_name}.so"
+            DEPENDS ${target_name} lv2_ttl_generator
+            WORKING_DIRECTORY "${products_folder}/${product_name}.lv2/"
+            VERBATIM)
 
         _juce_copy_after_build(${shared_code_target} ${target_name} "${output_path}" JUCE_LV2_COPY_DIR)
     elseif(kind STREQUAL "VST")

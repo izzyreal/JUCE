@@ -135,4 +135,5 @@ install(FILES "${JUCE_BINARY_DIR}/JUCEConfigVersion.cmake"
               "${JUCE_CMAKE_UTILS_DIR}/UnityPluginGUIScript.cs.in"
               "${JUCE_CMAKE_UTILS_DIR}/copyDir.cmake"
               "${JUCE_CMAKE_UTILS_DIR}/juce_runtime_arch_detection.cpp"
+              "${JUCE_CMAKE_UTILS_DIR}/lv2_ttl_generator.c"
         DESTINATION "${JUCE_INSTALL_DESTINATION}")
