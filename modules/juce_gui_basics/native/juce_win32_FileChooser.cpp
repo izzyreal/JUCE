@@ -327,7 +327,6 @@ private:
 
         return result;
     }
-   #endif
 
     Array<URL> openDialogPreVista (bool async)
     {
