@@ -121,6 +121,7 @@ ProjectExporter::ExporterTypeInfo ProjectExporter::getTypeInfoForExporter (const
     if (iter != typeInfos.end())
         return *iter;
 
+    jassertfalse;
     return {};
 }
 
@@ -130,7 +131,7 @@ ProjectExporter::ExporterTypeInfo ProjectExporter::getCurrentPlatformExporterTyp
      return ProjectExporter::getTypeInfoForExporter (XcodeProjectExporter::getValueTreeTypeNameMac());
     #elif JUCE_WINDOWS
      return ProjectExporter::getTypeInfoForExporter (MSVCProjectExporterVC2019::getValueTreeTypeName());
-    #elif JUCE_LINUX
+    #elif JUCE_LINUX || JUCE_BSD
      return ProjectExporter::getTypeInfoForExporter (MakefileProjectExporter::getValueTreeTypeName());
     #else
      #error "unknown platform!"
@@ -332,10 +333,10 @@ void ProjectExporter::createIconProperties (PropertyListBuilder& props)
     choices.add ("<None>");
     ids.add (var());
 
-    for (int i = 0; i < images.size(); ++i)
+    for (const auto* imageItem : images)
     {
-        choices.add (images.getUnchecked(i)->getName());
-        ids.add (images.getUnchecked(i)->getID());
+        choices.add (imageItem->getName());
+        ids.add (imageItem->getID());
     }
 
     props.add (new ChoicePropertyComponent (smallIconValue, "Icon (Small)", choices, ids),
@@ -1024,7 +1025,12 @@ StringArray ProjectExporter::BuildConfiguration::getLibrarySearchPaths() const
     auto s = getSearchPathsFromString (getLibrarySearchPathString());
 
     for (auto path : exporter.moduleLibSearchPaths)
+    {
+        if (exporter.isXcode())
+            s.add (path);
+
         s.add (path + separator + getModuleLibraryArchName());
+    }
 
     return s;
 }

@@ -41,6 +41,9 @@ public:
         // it's dangerous to create a window on a thread other than the message thread.
         JUCE_ASSERT_MESSAGE_MANAGER_IS_LOCKED
 
+        if (! XWindowSystem::getInstance()->isX11Available())
+            return;
+
         if (isAlwaysOnTop)
             ++numAlwaysOnTopPeers;
 
@@ -80,13 +83,18 @@ public:
     //==============================================================================
     void setBounds (const Rectangle<int>& newBounds, bool isNowFullScreen) override
     {
-        bounds = newBounds.withSize (jmax (1, newBounds.getWidth()),
-                                     jmax (1, newBounds.getHeight()));
+        const auto correctedNewBounds = newBounds.withSize (jmax (1, newBounds.getWidth()),
+                                                            jmax (1, newBounds.getHeight()));
+
+        if (bounds == correctedNewBounds && fullScreen == isNowFullScreen)
+            return;
+
+        bounds = correctedNewBounds;
 
         updateScaleFactorFromNewBounds (bounds, false);
 
-        auto physicalBounds = (parentWindow == 0 ? Desktop::getInstance().getDisplays().logicalToPhysical (bounds)
-                               : bounds * currentScaleFactor);
+        auto physicalBounds = parentWindow == 0 ? Desktop::getInstance().getDisplays().logicalToPhysical (bounds)
+                                                : bounds * currentScaleFactor;
 
         WeakReference<Component> deletionChecker (&component);
 
@@ -103,13 +111,16 @@ public:
 
     Point<int> getScreenPosition (bool physical) const
     {
-        auto parentPosition = XWindowSystem::getInstance()->getParentScreenPosition();
+        auto physicalParentPosition = XWindowSystem::getInstance()->getPhysicalParentScreenPosition();
+        auto parentPosition = parentWindow == 0 ? Desktop::getInstance().getDisplays().physicalToLogical (physicalParentPosition)
+                                                : physicalParentPosition / currentScaleFactor;
 
-        auto screenBounds = (parentWindow == 0 ? bounds
-                                               : bounds.translated (parentPosition.x, parentPosition.y));
+        auto screenBounds = parentWindow == 0 ? bounds
+                                              : bounds.translated (parentPosition.x, parentPosition.y);
 
         if (physical)
-            return Desktop::getInstance().getDisplays().logicalToPhysical (screenBounds.getTopLeft());
+            return parentWindow == 0 ? Desktop::getInstance().getDisplays().logicalToPhysical (screenBounds.getTopLeft())
+                                     : screenBounds.getTopLeft() * currentScaleFactor;
 
         return screenBounds.getTopLeft();
     }
@@ -174,8 +185,14 @@ public:
 
         if (fullScreen != shouldBeFullScreen)
         {
+            const auto usingNativeTitleBar = ((styleFlags & windowHasTitleBar) != 0);
+
+            if (usingNativeTitleBar)
+                XWindowSystem::getInstance()->setMaximised (windowH, shouldBeFullScreen);
+
             if (shouldBeFullScreen)
-                r = Desktop::getInstance().getDisplays().getPrimaryDisplay()->userArea;
+                r = usingNativeTitleBar ? XWindowSystem::getInstance()->getWindowBounds (windowH, parentWindow)
+                                        : Desktop::getInstance().getDisplays().getDisplayForRect (bounds)->userArea;
 
             if (! r.isEmpty())
                 setBounds (ScalingHelpers::scaledScreenPosToUnscaled (component, r), shouldBeFullScreen);
@@ -257,12 +274,14 @@ public:
     //==============================================================================
     void repaint (const Rectangle<int>& area) override
     {
-        repainter->repaint (area.getIntersection (bounds.withZeroOrigin()));
+        if (repainter != nullptr)
+            repainter->repaint (area.getIntersection (bounds.withZeroOrigin()));
     }
 
     void performAnyPendingRepaintsNow() override
     {
-        repainter->performAnyPendingRepaintsNow();
+        if (repainter != nullptr)
+            repainter->performAnyPendingRepaintsNow();
     }
 
     void setIcon (const Image& newIcon) override
@@ -312,8 +331,8 @@ public:
 
             updateScaleFactorFromNewBounds (physicalBounds, true);
 
-            bounds = (parentWindow == 0 ? Desktop::getInstance().getDisplays().physicalToLogical (physicalBounds)
-                                        : physicalBounds / currentScaleFactor);
+            bounds = parentWindow == 0 ? Desktop::getInstance().getDisplays().physicalToLogical (physicalBounds)
+                                       : physicalBounds / currentScaleFactor;
         }
     }
 
@@ -431,9 +450,6 @@ private:
     //==============================================================================
     void updateScaleFactorFromNewBounds (const Rectangle<int>& newBounds, bool isPhysical)
     {
-        if (! JUCEApplicationBase::isStandaloneApp())
-            return;
-
         Point<int> translation = (parentWindow != 0 ? getScreenPosition (isPhysical) : Point<int>());
         const auto& desktop = Desktop::getInstance();
 
@@ -638,16 +654,86 @@ void LookAndFeel::playAlertSound()
 }
 
 //==============================================================================
+static int showDialog (const MessageBoxOptions& options,
+                       ModalComponentManager::Callback* callback,
+                       Async async)
+{
+    const auto dummyCallback = [] (int) {};
+
+    switch (options.getNumButtons())
+    {
+        case 2:
+        {
+            if (async == Async::yes && callback == nullptr)
+                callback = ModalCallbackFunction::create (dummyCallback);
+
+            return AlertWindow::showOkCancelBox (options.getIconType(),
+                                                 options.getTitle(),
+                                                 options.getMessage(),
+                                                 options.getButtonText (0),
+                                                 options.getButtonText (1),
+                                                 options.getAssociatedComponent(),
+                                                 callback) ? 1 : 0;
+        }
+
+        case 3:
+        {
+            if (async == Async::yes && callback == nullptr)
+                callback = ModalCallbackFunction::create (dummyCallback);
+
+            return AlertWindow::showYesNoCancelBox (options.getIconType(),
+                                                    options.getTitle(),
+                                                    options.getMessage(),
+                                                    options.getButtonText (0),
+                                                    options.getButtonText (1),
+                                                    options.getButtonText (2),
+                                                    options.getAssociatedComponent(),
+                                                    callback);
+        }
+
+        case 1:
+        default:
+            break;
+    }
+
+   #if JUCE_MODAL_LOOPS_PERMITTED
+    if (async == Async::no)
+    {
+        AlertWindow::showMessageBox (options.getIconType(),
+                                     options.getTitle(),
+                                     options.getMessage(),
+                                     options.getButtonText (0),
+                                     options.getAssociatedComponent());
+    }
+    else
+   #endif
+    {
+        AlertWindow::showMessageBoxAsync (options.getIconType(),
+                                          options.getTitle(),
+                                          options.getMessage(),
+                                          options.getButtonText (0),
+                                          options.getAssociatedComponent(),
+                                          callback);
+    }
+
+    return 0;
+}
+
 #if JUCE_MODAL_LOOPS_PERMITTED
-void JUCE_CALLTYPE NativeMessageBox::showMessageBox (AlertWindow::AlertIconType iconType,
+void JUCE_CALLTYPE NativeMessageBox::showMessageBox (MessageBoxIconType iconType,
                                                      const String& title, const String& message,
-                                                     Component*)
+                                                     Component* /*associatedComponent*/)
 {
     AlertWindow::showMessageBox (iconType, title, message);
 }
+
+int JUCE_CALLTYPE NativeMessageBox::show (const MessageBoxOptions& options)
+{
+    return showDialog (options, nullptr, Async::no);
+}
 #endif
 
-void JUCE_CALLTYPE NativeMessageBox::showMessageBoxAsync (AlertWindow::AlertIconType iconType,
+void JUCE_CALLTYPE NativeMessageBox::showMessageBoxAsync (MessageBoxIconType iconType,
                                                           const String& title, const String& message,
                                                           Component* associatedComponent,
                                                           ModalComponentManager::Callback* callback)
@@ -655,7 +741,7 @@ void JUCE_CALLTYPE NativeMessageBox::showMessageBoxAsync (AlertWindow::AlertIcon
     AlertWindow::showMessageBoxAsync (iconType, title, message, {}, associatedComponent, callback);
 }
 
-bool JUCE_CALLTYPE NativeMessageBox::showOkCancelBox (AlertWindow::AlertIconType iconType,
+bool JUCE_CALLTYPE NativeMessageBox::showOkCancelBox (MessageBoxIconType iconType,
                                                       const String& title, const String& message,
                                                       Component* associatedComponent,
                                                       ModalComponentManager::Callback* callback)
@@ -663,7 +749,7 @@ bool JUCE_CALLTYPE NativeMessageBox::showOkCancelBox (AlertWindow::AlertIconType
     return AlertWindow::showOkCancelBox (iconType, title, message, {}, {}, associatedComponent, callback);
 }
 
-int JUCE_CALLTYPE NativeMessageBox::showYesNoCancelBox (AlertWindow::AlertIconType iconType,
+int JUCE_CALLTYPE NativeMessageBox::showYesNoCancelBox (MessageBoxIconType iconType,
                                                         const String& title, const String& message,
                                                         Component* associatedComponent,
                                                         ModalComponentManager::Callback* callback)
@@ -672,13 +758,25 @@ int JUCE_CALLTYPE NativeMessageBox::showYesNoCancelBox (AlertWindow::AlertIconTy
                                             associatedComponent, callback);
 }
 
-int JUCE_CALLTYPE NativeMessageBox::showYesNoBox (AlertWindow::AlertIconType iconType,
+int JUCE_CALLTYPE NativeMessageBox::showYesNoBox (MessageBoxIconType iconType,
                                                   const String& title, const String& message,
                                                   Component* associatedComponent,
                                                   ModalComponentManager::Callback* callback)
 {
-    return AlertWindow::showOkCancelBox (iconType, title, message, TRANS ("Yes"), TRANS ("No"),
+    return AlertWindow::showOkCancelBox (iconType, title, message, TRANS("Yes"), TRANS("No"),
                                          associatedComponent, callback);
+}
+
+void JUCE_CALLTYPE NativeMessageBox::showAsync (const MessageBoxOptions& options,
+                                                ModalComponentManager::Callback* callback)
+{
+    showDialog (options, callback, Async::yes);
+}
+
+void JUCE_CALLTYPE NativeMessageBox::showAsync (const MessageBoxOptions& options,
+                                                std::function<void (int)> callback)
+{
+    showAsync (options, ModalCallbackFunction::create (callback));
 }
 
 //==============================================================================

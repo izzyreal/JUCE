@@ -97,6 +97,7 @@ using namespace juce;
 
 #include "../utility/juce_FakeMouseMoveGenerator.h"
 #include "../utility/juce_WindowsHooks.h"
+#include "../utility/juce_LinuxMessageThread.h"
 
 #include <juce_audio_processors/format_types/juce_LegacyAudioParameter.cpp>
 #include <juce_audio_processors/format_types/juce_VSTCommon.h>
@@ -144,11 +145,11 @@ namespace
     {
         const int frameThickness = GetSystemMetrics (SM_CYFIXEDFRAME);
 
-        while (w != 0)
+        while (w != nullptr)
         {
             auto parent = getWindowParent (w);
 
-            if (parent == 0)
+            if (parent == nullptr)
                 break;
 
             TCHAR windowType[32] = { 0 };
@@ -176,53 +177,11 @@ namespace
         return w;
     }
 
+    static int numActivePlugins = 0;
     static bool messageThreadIsDefinitelyCorrect = false;
 }
 
-//==============================================================================
-#elif JUCE_LINUX
-
-struct SharedMessageThread  : public Thread
-{
-    SharedMessageThread()  : Thread ("VstMessageThread")
-    {
-        startThread (7);
-
-        while (! initialised)
-            sleep (1);
-    }
-
-    ~SharedMessageThread() override
-    {
-        signalThreadShouldExit();
-        JUCEApplicationBase::quit();
-        waitForThreadToExit (5000);
-        clearSingletonInstance();
-    }
-
-    void run() override
-    {
-        initialiseJuce_GUI();
-
-        MessageManager::getInstance()->setCurrentThreadAsMessageThread();
-        initialised = true;
-
-        XWindowSystem::getInstance();
-
-        while ((! threadShouldExit()) && MessageManager::getInstance()->runDispatchLoopUntil (250))
-        {}
-    }
-
-    JUCE_DECLARE_SINGLETON (SharedMessageThread, false)
-
-    bool initialised = false;
-};
-
-JUCE_IMPLEMENT_SINGLETON (SharedMessageThread)
-
 #endif
-
-static Array<void*> activePlugins;
 
 //==============================================================================
 // Ableton Live host specific commands
@@ -246,7 +205,6 @@ struct AbletonLiveHostSpecific
 class JuceVSTWrapper  : public AudioProcessorListener,
                         public AudioPlayHead,
                         private Timer,
-                        private AsyncUpdater,
                         private AudioProcessorParameter::Listener
 {
 private:
@@ -281,9 +239,9 @@ private:
 
 public:
     //==============================================================================
-    JuceVSTWrapper (Vst2::VstHostCallback cb, AudioProcessor* af)
+    JuceVSTWrapper (Vst2::audioMasterCallback cb, std::unique_ptr<AudioProcessor> af)
        : hostCallback (cb),
-         processor (af)
+         processor (std::move (af))
     {
         inParameterChangedCallback = false;
 
@@ -309,18 +267,18 @@ public:
         juceParameters.update (*processor, false);
 
         memset (&vstEffect, 0, sizeof (vstEffect));
-        vstEffect.interfaceIdentifier = Vst2::juceVstInterfaceIdentifier;
-        vstEffect.dispatchFunction = dispatcherCB;
-        vstEffect.processAudioFunction = nullptr;
-        vstEffect.setParameterValueFunction = setParameterCB;
-        vstEffect.getParameterValueFunction = getParameterCB;
-        vstEffect.numPrograms = jmax (1, af->getNumPrograms());
-        vstEffect.numParameters = juceParameters.getNumParameters();
-        vstEffect.numInputChannels = maxNumInChannels;
-        vstEffect.numOutputChannels = maxNumOutChannels;
-        vstEffect.latency = processor->getLatencySamples();
-        vstEffect.effectPointer = this;
-        vstEffect.plugInIdentifier = JucePlugin_VSTUniqueID;
+        vstEffect.magic = 0x56737450 /* 'VstP' */;
+        vstEffect.dispatcher = (Vst2::AEffectDispatcherProc) dispatcherCB;
+        vstEffect.process = nullptr;
+        vstEffect.setParameter = (Vst2::AEffectSetParameterProc) setParameterCB;
+        vstEffect.getParameter = (Vst2::AEffectGetParameterProc) getParameterCB;
+        vstEffect.numPrograms = jmax (1, processor->getNumPrograms());
+        vstEffect.numParams = juceParameters.getNumParameters();
+        vstEffect.numInputs = maxNumInChannels;
+        vstEffect.numOutputs = maxNumOutChannels;
+        vstEffect.initialDelay = processor->getLatencySamples();
+        vstEffect.object = this;
+        vstEffect.uniqueID = JucePlugin_VSTUniqueID;
 
        #ifdef JucePlugin_VSTChunkStructureVersion
         vstEffect.plugInVersion = JucePlugin_VSTChunkStructureVersion;
@@ -346,44 +304,34 @@ public:
             vstEffect.flags |= 512;
        #endif
 
-        activePlugins.add (this);
+       #if JUCE_WINDOWS
+        ++numActivePlugins;
+       #endif
     }
 
     ~JuceVSTWrapper() override
     {
         JUCE_AUTORELEASEPOOL
         {
-            {
-               #if JUCE_LINUX
-                MessageManagerLock mmLock;
-               #endif
-                stopTimer();
-                deleteEditor (false);
+           #if JUCE_LINUX || JUCE_BSD
+            MessageManagerLock mmLock;
+           #endif
 
-                hasShutdown = true;
+            stopTimer();
+            deleteEditor (false);
 
-                delete processor;
-                processor = nullptr;
+            hasShutdown = true;
 
-                jassert (editorComp == nullptr);
+            processor = nullptr;
 
-                deleteTempChannels();
+            jassert (editorComp == nullptr);
 
-                jassert (activePlugins.contains (this));
-                activePlugins.removeFirstMatchingValue (this);
-            }
+            deleteTempChannels();
 
-            if (activePlugins.size() == 0)
-            {
-               #if JUCE_LINUX
-                SharedMessageThread::deleteInstance();
-               #endif
-                shutdownJuce_GUI();
-
-               #if JUCE_WINDOWS
+           #if JUCE_WINDOWS
+            if (--numActivePlugins == 0)
                 messageThreadIsDefinitelyCorrect = false;
-               #endif
-            }
+           #endif
         }
     }
 
@@ -423,8 +371,6 @@ public:
        #if JUCE_DEBUG && ! (JucePlugin_ProducesMidiOutput || JucePlugin_IsMidiEffect)
         const int numMidiEventsComingIn = midiEvents.getNumEvents();
        #endif
-
-        jassert (activePlugins.contains (this));
 
         {
             const int numIn  = processor->getTotalNumInputChannels();
@@ -791,19 +737,9 @@ public:
 
     void parameterGestureChanged (int, bool) override {}
 
-    void audioProcessorChanged (AudioProcessor*) override
+    void audioProcessorChanged (AudioProcessor*, const ChangeDetails& details) override
     {
-        vstEffect.latency = processor->getLatencySamples();
-        triggerAsyncUpdate();
-    }
-
-    void handleAsyncUpdate() override
-    {
-        if (hostCallback != nullptr)
-        {
-            hostCallback (&vstEffect, Vst2::hostOpcodeUpdateView, 0, 0, nullptr, 0);
-            hostCallback (&vstEffect, Vst2::hostOpcodeIOModified,     0, 0, nullptr, 0);
-        }
+        hostChangeUpdater.update (details);
     }
 
     bool getPinProperties (Vst2::VstPinInfo& properties, bool direction, int index) const
@@ -1031,21 +967,17 @@ public:
             : wrapper (w)
         {
             editor.setOpaque (true);
-            editor.setVisible (true);
-            setOpaque (true);
-
-            setTopLeftPosition (editor.getPosition());
-            editor.setTopLeftPosition (0, 0);
-            auto b = getLocalArea (&editor, editor.getLocalBounds());
-            setSize (b.getWidth(), b.getHeight());
-
             addAndMakeVisible (editor);
+
+            auto editorBounds = getSizeToContainChild();
+            setSize (editorBounds.getWidth(), editorBounds.getHeight());
 
            #if JUCE_WINDOWS
             if (! getHostType().isReceptor())
                 addMouseListener (this, true);
            #endif
 
+            setOpaque (true);
             ignoreUnused (fakeMouseGenerator);
         }
 
@@ -1055,42 +987,35 @@ public:
                                  // have been transferred to another parent which takes over ownership.
         }
 
-        void paint (Graphics&) override {}
+        void paint (Graphics& g) override
+        {
+            g.fillAll (Colours::black);
+        }
 
         void getEditorBounds (Vst2::VstEditorBounds& bounds)
         {
-            auto b = getSizeToContainChild();
-            bounds = convertToHostBounds ({ 0, 0, (int16) b.getHeight(), (int16) b.getWidth() });
+            auto editorBounds = getSizeToContainChild();
+            bounds = convertToHostBounds ({ 0, 0, (int16) editorBounds.getHeight(), (int16) editorBounds.getWidth() });
         }
 
         void attachToHost (VstOpCodeArguments args)
         {
-            setOpaque (true);
             setVisible (false);
 
-           #if JUCE_WINDOWS
+           #if JUCE_WINDOWS || JUCE_LINUX || JUCE_BSD
             addToDesktop (0, args.ptr);
-            hostWindow = (HWND) args.ptr;
+            hostWindow = (HostWindowType) args.ptr;
 
-            #if JUCE_WIN_PER_MONITOR_DPI_AWARE
+            #if JUCE_LINUX || JUCE_BSD
+             X11Symbols::getInstance()->xReparentWindow (display,
+                                                         (Window) getWindowHandle(),
+                                                         (HostWindowType) hostWindow,
+                                                         0, 0);
+            #elif JUCE_WINDOWS && JUCE_WIN_PER_MONITOR_DPI_AWARE
              checkHostWindowScaleFactor();
              startTimer (500);
             #endif
-           #elif JUCE_LINUX
-            addToDesktop (0, args.ptr);
-            hostWindow = (Window) args.ptr;
-            X11Symbols::getInstance()->xReparentWindow (display, (Window) getWindowHandle(), hostWindow, 0, 0);
-
-            if (auto* peer = getPeer())
-            {
-                auto screenBounds = peer->localToGlobal (peer->getBounds());
-
-                auto scale = Desktop::getInstance().getDisplays().getDisplayForRect (screenBounds, false)->scale
-                                         / Desktop::getInstance().getGlobalScaleFactor();
-
-                setContentScaleFactor ((float) scale);
-            }
-           #else
+           #elif JUCE_MAC
             hostWindow = attachComponentToWindowRefVST (this, args.ptr, wrapper.useNSView);
            #endif
 
@@ -1101,15 +1026,10 @@ public:
         {
            #if JUCE_MAC
             if (hostWindow != nullptr)
-            {
                 detachComponentFromWindowRefVST (this, hostWindow, wrapper.useNSView);
-                hostWindow = nullptr;
-            }
            #endif
 
-           #if JUCE_LINUX
             hostWindow = {};
-           #endif
         }
 
         void checkVisibility()
@@ -1127,23 +1047,21 @@ public:
 
         void resized() override
         {
-            auto newBounds = getLocalBounds();
-
-           #if JUCE_WINDOWS && JUCE_WIN_PER_MONITOR_DPI_AWARE
-            if (! lastBounds.isEmpty() && isWithin (newBounds.toDouble().getAspectRatio(), lastBounds.toDouble().getAspectRatio(), 0.1))
-                return;
-
-            lastBounds = newBounds;
-           #endif
-
-            if (auto* ed = getEditorComp())
+            if (auto* pluginEditor = getEditorComp())
             {
-                ed->setTopLeftPosition (0, 0);
+                if (! resizingParent)
+                {
+                    auto newBounds = getLocalBounds();
 
-                if (shouldResizeEditor)
-                    ed->setBounds (ed->getLocalArea (this, newBounds));
+                    {
+                        const ScopedValueSetter<bool> resizingChildSetter (resizingChild, true);
+                        pluginEditor->setBounds (pluginEditor->getLocalArea (this, newBounds).withPosition (0, 0));
+                    }
 
-                updateWindowSize (false);
+                    lastBounds = newBounds;
+                }
+
+                updateWindowSize();
             }
 
            #if JUCE_MAC && ! JUCE_64BIT
@@ -1154,59 +1072,58 @@ public:
 
         void parentSizeChanged() override
         {
-            updateWindowSize (true);
+            updateWindowSize();
         }
 
         void childBoundsChanged (Component*) override
         {
-            updateWindowSize (false);
+            if (resizingChild)
+                return;
+
+            auto newBounds = getSizeToContainChild();
+
+            if (newBounds != lastBounds)
+            {
+                updateWindowSize();
+                lastBounds = newBounds;
+            }
         }
 
         juce::Rectangle<int> getSizeToContainChild()
         {
-            if (auto* ed = getEditorComp())
-                return getLocalArea (ed, ed->getLocalBounds());
+            if (auto* pluginEditor = getEditorComp())
+                return getLocalArea (pluginEditor, pluginEditor->getLocalBounds());
 
             return {};
         }
 
-        void updateWindowSize (bool resizeEditor)
+        void updateWindowSize()
         {
-            if (! isInSizeWindow)
+            if (! resizingParent
+                && getEditorComp() != nullptr
+                && hostWindow != HostWindowType{})
             {
-                if (auto* ed = getEditorComp())
+                auto editorBounds = getSizeToContainChild();
+
+                resizeHostWindow (editorBounds.getWidth(), editorBounds.getHeight());
+
                 {
-                    ed->setTopLeftPosition (0, 0);
-                    auto pos = getSizeToContainChild();
+                    const ScopedValueSetter<bool> resizingParentSetter (resizingParent, true);
 
-                   #if JUCE_MAC
-                    if (wrapper.useNSView)
-                        setTopLeftPosition (0, getHeight() - pos.getHeight());
-                   #endif
-
-                    resizeHostWindow (pos.getWidth(), pos.getHeight());
-
-                   #if ! JUCE_LINUX // setSize() on linux causes renoise and energyxt to fail.
-                    if (! resizeEditor) // this is needed to prevent an infinite resizing loop due to coordinate rounding
-                        shouldResizeEditor = false;
-
-                    setSize (pos.getWidth(), pos.getHeight());
-
-                    shouldResizeEditor = true;
-                   #else
-                    ignoreUnused (resizeEditor);
-
-                    auto scale = Desktop::getInstance().getGlobalScaleFactor();
+                   #if JUCE_LINUX || JUCE_BSD // setSize() on linux causes renoise and energyxt to fail.
+                    auto rect = convertToHostBounds ({ 0, 0, (int16) editorBounds.getHeight(), (int16) editorBounds.getWidth() });
 
                     X11Symbols::getInstance()->xResizeWindow (display, (Window) getWindowHandle(),
-                                                              static_cast<unsigned int> (roundToInt ((float) pos.getWidth()  * scale)),
-                                                              static_cast<unsigned int> (roundToInt ((float) pos.getHeight() * scale)));
-                   #endif
-
-                   #if JUCE_MAC
-                    resizeHostWindow (pos.getWidth(), pos.getHeight()); // (doing this a second time seems to be necessary in tracktion)
+                                                              static_cast<unsigned int> (rect.right - rect.left),
+                                                              static_cast<unsigned int> (rect.bottom - rect.top));
+                   #else
+                    setSize (editorBounds.getWidth(), editorBounds.getHeight());
                    #endif
                 }
+
+               #if JUCE_MAC
+                resizeHostWindow (editorBounds.getWidth(), editorBounds.getHeight()); // (doing this a second time seems to be necessary in tracktion)
+               #endif
             }
         }
 
@@ -1224,23 +1141,23 @@ public:
 
                 if (status == (pointer_sized_int) 1 || getHostType().isAbletonLive())
                 {
-                    const ScopedValueSetter<bool> inSizeWindowSetter (isInSizeWindow, true);
+                    const ScopedValueSetter<bool> resizingParentSetter (resizingParent, true);
 
                     sizeWasSuccessful = (host (wrapper.getAEffect(), Vst2::hostOpcodeWindowSize,
                                                newWidth, newHeight, nullptr, 0) != 0);
                 }
             }
 
+            // some hosts don't support the sizeWindow call, so do it manually..
             if (! sizeWasSuccessful)
             {
-                // some hosts don't support the sizeWindow call, so do it manually..
+                const ScopedValueSetter<bool> resizingParentSetter (resizingParent, true);
+
                #if JUCE_MAC
                 setNativeHostWindowSizeVST (hostWindow, this, newWidth, newHeight, wrapper.useNSView);
-
-               #elif JUCE_LINUX
+               #elif JUCE_LINUX || JUCE_BSD
                 // (Currently, all linux hosts support sizeWindow, so this should never need to happen)
                 setSize (newWidth, newHeight);
-
                #else
                 int dw = 0;
                 int dh = 0;
@@ -1248,11 +1165,11 @@ public:
 
                 HWND w = (HWND) getWindowHandle();
 
-                while (w != 0)
+                while (w != nullptr)
                 {
                     HWND parent = getWindowParent (w);
 
-                    if (parent == 0)
+                    if (parent == nullptr)
                         break;
 
                     TCHAR windowType [32] = { 0 };
@@ -1266,7 +1183,7 @@ public:
                     GetWindowRect (parent, &parentPos);
 
                     if (w != (HWND) getWindowHandle())
-                        SetWindowPos (w, 0, 0, 0, newWidth + dw, newHeight + dh,
+                        SetWindowPos (w, nullptr, 0, 0, newWidth + dw, newHeight + dh,
                                       SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER);
 
                     dw = (parentPos.right - parentPos.left) - (windowPos.right - windowPos.left);
@@ -1278,19 +1195,13 @@ public:
                         break;
 
                     if (dw > 100 || dh > 100)
-                        w = 0;
+                        w = nullptr;
                 }
 
-                if (w != 0)
-                    SetWindowPos (w, 0, 0, 0, newWidth + dw, newHeight + dh,
+                if (w != nullptr)
+                    SetWindowPos (w, nullptr, 0, 0, newWidth + dw, newHeight + dh,
                                   SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER);
                #endif
-            }
-
-            if (auto* peer = getPeer())
-            {
-                peer->handleMovedOrResized();
-                repaint();
             }
         }
 
@@ -1300,27 +1211,22 @@ public:
             {
                 editorScaleFactor = scale;
 
-                if (auto* ed = getEditorComp())
-                    ed->setScaleFactor (editorScaleFactor);
+                if (auto* pluginEditor = getEditorComp())
+                {
+                    auto prevEditorBounds = pluginEditor->getLocalArea (this, lastBounds);
 
-                updateWindowSize (true);
+                    {
+                        const ScopedValueSetter<bool> resizingChildSetter (resizingChild, true);
+
+                        pluginEditor->setScaleFactor (editorScaleFactor);
+                        pluginEditor->setBounds (prevEditorBounds.withPosition (0, 0));
+                    }
+
+                    lastBounds = getSizeToContainChild();
+                    updateWindowSize();
+                }
             }
         }
-
-       #if JUCE_WINDOWS && JUCE_WIN_PER_MONITOR_DPI_AWARE
-        void checkHostWindowScaleFactor()
-        {
-            auto hostWindowScale = (float) getScaleFactorForWindow (hostWindow);
-
-            if (hostWindowScale > 0.0f && ! approximatelyEqual (hostWindowScale, editorScaleFactor))
-                wrapper.handleSetContentScaleFactor (hostWindowScale);
-        }
-
-        void timerCallback() override
-        {
-            checkHostWindowScaleFactor();
-        }
-       #endif
 
        #if JUCE_WINDOWS
         void mouseDown (const MouseEvent&) override
@@ -1336,6 +1242,21 @@ public:
                 if (HWND parent = findMDIParentOf ((HWND) getWindowHandle()))
                     SetWindowPos (parent, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
         }
+
+        #if JUCE_WIN_PER_MONITOR_DPI_AWARE
+         void checkHostWindowScaleFactor()
+         {
+             auto hostWindowScale = (float) getScaleFactorForWindow ((HostWindowType) hostWindow);
+
+             if (hostWindowScale > 0.0f && ! approximatelyEqual (hostWindowScale, editorScaleFactor))
+                 wrapper.handleSetContentScaleFactor (hostWindowScale);
+         }
+
+         void timerCallback() override
+         {
+             checkHostWindowScaleFactor();
+         }
+        #endif
        #endif
 
        #if JUCE_MAC
@@ -1347,6 +1268,7 @@ public:
         }
        #endif
 
+    private:
         //==============================================================================
         static Vst2::VstEditorBounds convertToHostBounds (const Vst2::VstEditorBounds& rect)
         {
@@ -1364,30 +1286,77 @@ public:
         //==============================================================================
         JuceVSTWrapper& wrapper;
         FakeMouseMoveGenerator fakeMouseGenerator;
-        bool isInSizeWindow = false;
-        bool shouldResizeEditor = true;
+        bool resizingChild = false, resizingParent = false;
 
         float editorScaleFactor = 1.0f;
+        juce::Rectangle<int> lastBounds;
 
-       #if JUCE_MAC
-        void* hostWindow = nullptr;
-       #elif JUCE_LINUX
+       #if JUCE_LINUX || JUCE_BSD
+        using HostWindowType = ::Window;
         ::Display* display = XWindowSystem::getInstance()->getDisplay();
-        Window hostWindow = {};
        #elif JUCE_WINDOWS
-        HWND hostWindow = {};
+        using HostWindowType = HWND;
         WindowsHooks hooks;
-        #if JUCE_WIN_PER_MONITOR_DPI_AWARE
-         juce::Rectangle<int> lastBounds;
-        #endif
+       #else
+        using HostWindowType = void*;
        #endif
+
+        HostWindowType hostWindow = {};
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EditorCompWrapper)
     };
 
     //==============================================================================
 private:
-    static JuceVSTWrapper* getWrapper (Vst2::VstEffectInterface* v) noexcept  { return static_cast<JuceVSTWrapper*> (v->effectPointer); }
+    struct HostChangeUpdater  : private AsyncUpdater
+    {
+        explicit HostChangeUpdater (JuceVSTWrapper& o)  : owner (o) {}
+        ~HostChangeUpdater() override  { cancelPendingUpdate(); }
+
+        void update (const ChangeDetails& details)
+        {
+            if (details.latencyChanged)
+            {
+                owner.vstEffect.initialDelay = owner.processor->getLatencySamples();
+                callbackBits |= audioMasterIOChangedBit;
+            }
+
+            if (details.parameterInfoChanged || details.programChanged)
+                callbackBits |= audioMasterUpdateDisplayBit;
+
+            triggerAsyncUpdate();
+        }
+
+    private:
+        void handleAsyncUpdate() override
+        {
+            const auto callbacksToFire = callbackBits.exchange (0);
+
+            if (auto* callback = owner.hostCallback)
+            {
+                struct FlagPair
+                {
+                    Vst2::AudioMasterOpcodesX opcode;
+                    int bit;
+                };
+
+                constexpr FlagPair pairs[] { { Vst2::audioMasterUpdateDisplay, audioMasterUpdateDisplayBit },
+                                             { Vst2::audioMasterIOChanged,     audioMasterIOChangedBit } };
+
+                for (const auto& pair : pairs)
+                    if ((callbacksToFire & pair.bit) != 0)
+                        callback (&owner.vstEffect, pair.opcode, 0, 0, nullptr, 0);
+            }
+        }
+
+        static constexpr auto audioMasterUpdateDisplayBit = 1 << 0;
+        static constexpr auto audioMasterIOChangedBit     = 1 << 1;
+
+        JuceVSTWrapper& owner;
+        std::atomic<int> callbackBits { 0 };
+    };
+
+    static JuceVSTWrapper* getWrapper (Vst2::AEffect* v) noexcept  { return static_cast<JuceVSTWrapper*> (v->object); }
 
     bool isProcessLevelOffline()
     {
@@ -1620,9 +1589,9 @@ private:
 
         if (editorComp != nullptr)
         {
-            editorComp->getEditorBounds (editorBounds);
-            *((Vst2::VstEditorBounds**) args.ptr) = &editorBounds;
-            return (pointer_sized_int) &editorBounds;
+            editorComp->getEditorBounds (editorRect);
+            *((Vst2::ERect**) args.ptr) = &editorRect;
+            return (pointer_sized_int) &editorRect;
         }
 
         return 0;
@@ -1862,7 +1831,7 @@ private:
         if (args.index == Vst2::plugInOpcodeGetParameterText)
             return handleCockosGetParameterText (args.value, args.ptr, args.opt);
 
-        if (auto callbackHandler = dynamic_cast<VSTCallbackHandler*> (processor))
+        if (auto callbackHandler = dynamic_cast<VSTCallbackHandler*> (processor.get()))
             return callbackHandler->handleVstManufacturerSpecific (args.index, args.value, args.ptr, args.opt);
 
         return 0;
@@ -1922,7 +1891,7 @@ private:
         if (matches ("hasCockosExtensions"))
             return (int32) 0xbeef0000;
 
-        if (auto callbackHandler = dynamic_cast<VSTCallbackHandler*> (processor))
+        if (auto callbackHandler = dynamic_cast<VSTCallbackHandler*> (processor.get()))
             return callbackHandler->handleVstPluginCanDo (args.index, args.value, args.ptr, args.opt);
 
         return 0;
@@ -1949,7 +1918,9 @@ private:
 
     pointer_sized_int handleKeyboardFocusRequired (VstOpCodeArguments)
     {
+        JUCE_BEGIN_IGNORE_WARNINGS_MSVC (6326)
         return (JucePlugin_EditorRequiresKeyboardFocus != 0) ? 1 : 0;
+        JUCE_END_IGNORE_WARNINGS_MSVC
     }
 
     pointer_sized_int handleGetVstInterfaceVersion (VstOpCodeArguments)
@@ -2015,8 +1986,6 @@ private:
        #if ! JUCE_MAC
         if (editorComp != nullptr)
             editorComp->setContentScaleFactor (scale);
-
-        lastScaleFactorReceived = scale;
        #else
         ignoreUnused (scale);
        #endif
@@ -2072,8 +2041,14 @@ private:
     }
 
     //==============================================================================
-    Vst2::VstHostCallback hostCallback;
-    AudioProcessor* processor = {};
+    ScopedJuceInitialiser_GUI libraryInitialiser;
+
+   #if JUCE_LINUX || JUCE_BSD
+    SharedResourcePointer<MessageThread> messageThread;
+   #endif
+
+    Vst2::audioMasterCallback hostCallback;
+    std::unique_ptr<AudioProcessor> processor;
     double sampleRate = 44100.0;
     int32 blockSize = 1024;
     Vst2::VstEffectInterface vstEffect;
@@ -2081,13 +2056,9 @@ private:
     juce::MemoryBlock chunkMemory;
     uint32 chunkMemoryTime = 0;
     std::unique_ptr<EditorCompWrapper> editorComp;
-    Vst2::VstEditorBounds editorBounds;
+    Vst2::ERect editorRect;
     MidiBuffer midiEvents;
     VSTMidiEventList outgoingEvents;
-
-   #if ! JUCE_MAC
-    float lastScaleFactorReceived = 1.0f;
-   #endif
 
     LegacyAudioParametersWrapper juceParameters;
 
@@ -2110,6 +2081,8 @@ private:
 
     ThreadLocalValue<bool> inParameterChangedCallback;
 
+    HostChangeUpdater hostChangeUpdater { *this };
+
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (JuceVSTWrapper)
 };
@@ -2122,21 +2095,26 @@ namespace
     {
         JUCE_AUTORELEASEPOOL
         {
-            initialiseJuce_GUI();
+            ScopedJuceInitialiser_GUI libraryInitialiser;
+
+           #if JUCE_LINUX || JUCE_BSD
+            SharedResourcePointer<MessageThread> messageThread;
+           #endif
 
             try
             {
                 if (audioMaster (nullptr, Vst2::hostOpcodeVstVersion, 0, 0, nullptr, 0) != 0)
                 {
-                   #if JUCE_LINUX
+                   #if JUCE_LINUX || JUCE_BSD
                     MessageManagerLock mmLock;
                    #endif
 
-                    auto* processor = createPluginFilterOfType (AudioProcessor::wrapperType_VST);
-                    auto* wrapper = new JuceVSTWrapper (audioMaster, processor);
+                    std::unique_ptr<AudioProcessor> processor { createPluginFilterOfType (AudioProcessor::wrapperType_VST) };
+                    auto* processorPtr = processor.get();
+                    auto* wrapper = new JuceVSTWrapper (audioMaster, std::move (processor));
                     auto* aEffect = wrapper->getAEffect();
 
-                    if (auto* callbackHandler = dynamic_cast<VSTCallbackHandler*> (processor))
+                    if (auto* callbackHandler = dynamic_cast<VSTCallbackHandler*> (processorPtr))
                     {
                         callbackHandler->handleVstHostCallbackAvailable ([audioMaster, aEffect] (int32 opcode, int32 index, pointer_sized_int value, void* ptr, float opt)
                         {
@@ -2183,14 +2161,13 @@ namespace
 
 //==============================================================================
 // Linux startup code..
-#elif JUCE_LINUX
+#elif JUCE_LINUX || JUCE_BSD
 
     JUCE_EXPORTED_FUNCTION Vst2::VstEffectInterface* VSTPluginMain (Vst2::VstHostCallback audioMaster);
     JUCE_EXPORTED_FUNCTION Vst2::VstEffectInterface* VSTPluginMain (Vst2::VstHostCallback audioMaster)
     {
         PluginHostType::jucePlugInClientCurrentWrapperType = AudioProcessor::wrapperType_VST;
 
-        SharedMessageThread::getInstance();
         return pluginEntryPoint (audioMaster);
     }
 
