@@ -890,7 +890,7 @@ public:
             return event;
         }];
 
-        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
+        _modifierKeyHandler = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
                                               handler:^NSEvent*(NSEvent* event)
         {
             auto code = [event keyCode];
