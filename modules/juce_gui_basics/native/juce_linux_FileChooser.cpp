@@ -26,7 +26,6 @@
 namespace juce
 {
 
-#if JUCE_MODAL_LOOPS_PERMITTED
 static bool exeIsAvailable (String executable)
 {
     ChildProcess child;
@@ -249,11 +248,10 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Native)
 };
-#endif
 
 bool FileChooser::isPlatformDialogAvailable()
 {
-   #if JUCE_DISABLE_NATIVE_FILECHOOSERS || ! JUCE_MODAL_LOOPS_PERMITTED
+   #if JUCE_DISABLE_NATIVE_FILECHOOSERS
     return false;
    #else
     static bool canUseNativeBox = exeIsAvailable ("zenity") || exeIsAvailable ("kdialog");

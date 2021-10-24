@@ -311,7 +311,6 @@ public:
     // Internal methods - do not use!
     void deliverBroadcastMessage (const String&);
     ~MessageManager() noexcept;
-    static bool dispatchNextMessageOnSystemQueue (bool returnIfNoPendingMessages);
    #endif
 
 private:
