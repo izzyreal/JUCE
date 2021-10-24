@@ -234,7 +234,7 @@ endfunction()
 # ==================================================================================================
 
 function(_juce_get_all_plugin_kinds out)
-    set(${out} AU AUv3 AAX Standalone Unity VST VST3 PARENT_SCOPE)
+    set(${out} AU AUv3 AAX Standalone Unity VST VST3 LV2 PARENT_SCOPE)
 endfunction()
 
 function(_juce_get_platform_plugin_kinds out)
@@ -246,6 +246,11 @@ function(_juce_get_platform_plugin_kinds out)
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         list(APPEND result AU)
+    endif()
+
+    # For now, only enabling LV2 builds on Linux
+    if((CMAKE_SYSTEM_NAME STREQUAL "Linux") OR (CMAKE_SYSTEM_NAME MATCHES ".*BSD"))
+        list(APPEND result LV2)
     endif()
 
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
