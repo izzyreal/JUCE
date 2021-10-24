@@ -580,7 +580,7 @@ public:
         }
     }
 
-    void audioProcessorChanged (AudioProcessor*)
+    void audioProcessorChanged (AudioProcessor*, const ChangeDetails&)
     {
         if (filter != nullptr && programsHost != nullptr)
         {
