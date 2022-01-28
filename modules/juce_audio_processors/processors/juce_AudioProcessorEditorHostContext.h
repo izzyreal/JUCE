@@ -31,6 +31,8 @@ namespace juce
     You can choose to create a standard PopupMenu to display the host-provided
     options. Alternatively, you can ask the host to display a native menu at
     a specific location.
+
+    @tags{Audio}
 */
 struct HostProvidedContextMenu
 {
@@ -45,7 +47,13 @@ struct HostProvidedContextMenu
     */
     virtual PopupMenu getEquivalentPopupMenu() const = 0;
 
-    /** Asks the host to display its native menu at a particular location. */
+    /** Asks the host to display its native menu at a location relative
+        to the top left corner of the editor.
+
+        The position you provide should be in logical pixels. To display
+        the menu next to the mouse cursor, call Component::getMouseXYRelative()
+        on your editor and pass the result to this function.
+    */
     virtual void showNativeMenu (Point<int> pos) const = 0;
 };
 
@@ -54,6 +62,8 @@ struct HostProvidedContextMenu
 
     At the moment, this can be used to retrieve context menus for parameters in
     compatible VST3 hosts. Additional extensions may be added here in the future.
+
+    @tags{Audio}
 */
 struct AudioProcessorEditorHostContext
 {

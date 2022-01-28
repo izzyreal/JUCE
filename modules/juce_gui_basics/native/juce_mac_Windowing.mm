@@ -82,7 +82,7 @@ private:
         [alert setInformativeText: juceStringToNS (options.getMessage())];
 
         [alert setAlertStyle: options.getIconType() == MessageBoxIconType::WarningIcon ? NSAlertStyleCritical
-                                                                                                : NSAlertStyleInformational];
+                                                                                       : NSAlertStyleInformational];
 
         const auto button1Text = options.getButtonText (0);
 
@@ -100,17 +100,21 @@ private:
 };
 
 static int showDialog (const MessageBoxOptions& options,
-                       std::unique_ptr<ModalComponentManager::Callback> callback,
-                       Async async)
+                       ModalComponentManager::Callback* callbackIn,
+                       AlertWindowMappings::MapFn mapFn)
 {
-    auto messageBox = std::make_unique<OSXMessageBox> (options, std::move (callback));
-
    #if JUCE_MODAL_LOOPS_PERMITTED
-    if (async == Async::no)
-        return messageBox->getResult();
+    if (callbackIn == nullptr)
+    {
+        jassert (mapFn != nullptr);
+
+        OSXMessageBox messageBox (options, nullptr);
+        return mapFn (messageBox.getResult());
+    }
    #endif
 
-    ignoreUnused (async);
+    auto messageBox = std::make_unique<OSXMessageBox> (options,
+                                                       AlertWindowMappings::getWrappedCallback (callbackIn, mapFn));
 
     messageBox->triggerAsyncUpdate();
     messageBox.release();
@@ -128,13 +132,12 @@ void JUCE_CALLTYPE NativeMessageBox::showMessageBox (MessageBoxIconType iconType
                  .withTitle (title)
                  .withMessage (message)
                  .withButton (TRANS("OK")),
-                nullptr,
-                Async::no);
+                nullptr, AlertWindowMappings::messageBox);
 }
 
 int JUCE_CALLTYPE NativeMessageBox::show (const MessageBoxOptions& options)
 {
-    return showDialog (options, nullptr, Async::no);
+    return showDialog (options, nullptr, AlertWindowMappings::noMapping);
 }
 #endif
 
@@ -148,8 +151,7 @@ void JUCE_CALLTYPE NativeMessageBox::showMessageBoxAsync (MessageBoxIconType ico
                   .withTitle (title)
                   .withMessage (message)
                   .withButton (TRANS("OK")),
-                rawToUniquePtr (AlertWindowMappings::getWrappedCallback (callback, AlertWindowMappings::messageBox)),
-                Async::yes);
+                callback, AlertWindowMappings::messageBox);
 }
 
 bool JUCE_CALLTYPE NativeMessageBox::showOkCancelBox (MessageBoxIconType iconType,
@@ -163,8 +165,7 @@ bool JUCE_CALLTYPE NativeMessageBox::showOkCancelBox (MessageBoxIconType iconTyp
                          .withMessage (message)
                          .withButton (TRANS("OK"))
                          .withButton (TRANS("Cancel")),
-                       rawToUniquePtr (AlertWindowMappings::getWrappedCallback (callback, AlertWindowMappings::okCancel)),
-                       callback != nullptr ? Async::yes : Async::no) != 0;
+                       callback, AlertWindowMappings::okCancel) != 0;
 }
 
 int JUCE_CALLTYPE NativeMessageBox::showYesNoCancelBox (MessageBoxIconType iconType,
@@ -179,8 +180,7 @@ int JUCE_CALLTYPE NativeMessageBox::showYesNoCancelBox (MessageBoxIconType iconT
                          .withButton (TRANS("Yes"))
                          .withButton (TRANS("No"))
                          .withButton (TRANS("Cancel")),
-                       rawToUniquePtr (AlertWindowMappings::getWrappedCallback (callback, AlertWindowMappings::yesNoCancel)),
-                       callback != nullptr ? Async::yes : Async::no);
+                       callback, AlertWindowMappings::yesNoCancel);
 }
 
 int JUCE_CALLTYPE NativeMessageBox::showYesNoBox (MessageBoxIconType iconType,
@@ -194,14 +194,13 @@ int JUCE_CALLTYPE NativeMessageBox::showYesNoBox (MessageBoxIconType iconType,
                          .withMessage (message)
                          .withButton (TRANS("Yes"))
                          .withButton (TRANS("No")),
-                       rawToUniquePtr (AlertWindowMappings::getWrappedCallback (callback, AlertWindowMappings::okCancel)),
-                       callback != nullptr ? Async::yes : Async::no);
+                       callback, AlertWindowMappings::okCancel);
 }
 
 void JUCE_CALLTYPE NativeMessageBox::showAsync (const MessageBoxOptions& options,
                                                 ModalComponentManager::Callback* callback)
 {
-    showDialog (options, rawToUniquePtr (callback), Async::yes);
+    showDialog (options, callback, AlertWindowMappings::noMapping);
 }
 
 void JUCE_CALLTYPE NativeMessageBox::showAsync (const MessageBoxOptions& options,
@@ -240,11 +239,11 @@ struct NSDraggingSourceHelper   : public ObjCClass<NSObject<NSDraggingSource>>
         addIvar<String*> ("text");
         addIvar<NSDragOperation*> ("operation");
 
-        addMethod (@selector (dealloc), dealloc, "v@:");
-        addMethod (@selector (pasteboard:item:provideDataForType:), provideDataForType, "v@:@@@");
+        addMethod (@selector (dealloc), dealloc);
+        addMethod (@selector (pasteboard:item:provideDataForType:), provideDataForType);
 
-        addMethod (@selector (draggingSession:sourceOperationMaskForDraggingContext:), sourceOperationMaskForDraggingContext, "c@:@@");
-        addMethod (@selector (draggingSession:endedAtPoint:operation:), draggingSessionEnded, "v@:@@@");
+        addMethod (@selector (draggingSession:sourceOperationMaskForDraggingContext:), sourceOperationMaskForDraggingContext);
+        addMethod (@selector (draggingSession:endedAtPoint:operation:), draggingSessionEnded);
 
         addProtocol (@protocol (NSPasteboardItemDataProvider));
 
@@ -431,6 +430,73 @@ Desktop::DisplayOrientation Desktop::getCurrentOrientation() const
     return upright;
 }
 
+bool Desktop::isDarkModeActive() const
+{
+    return [[[NSUserDefaults standardUserDefaults] stringForKey: nsStringLiteral ("AppleInterfaceStyle")]
+                isEqualToString: nsStringLiteral ("Dark")];
+}
+
+class Desktop::NativeDarkModeChangeDetectorImpl
+{
+public:
+    NativeDarkModeChangeDetectorImpl()
+    {
+        static DelegateClass delegateClass;
+
+        delegate = [delegateClass.createInstance() init];
+        object_setInstanceVariable (delegate, "owner", this);
+
+        JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wundeclared-selector")
+        [[NSDistributedNotificationCenter defaultCenter] addObserver: delegate
+                                                            selector: @selector (darkModeChanged:)
+                                                                name: @"AppleInterfaceThemeChangedNotification"
+                                                              object: nil];
+        JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+    }
+
+    ~NativeDarkModeChangeDetectorImpl()
+    {
+        object_setInstanceVariable (delegate, "owner", nullptr);
+        [[NSDistributedNotificationCenter defaultCenter] removeObserver: delegate];
+        [delegate release];
+    }
+
+    void darkModeChanged()
+    {
+        Desktop::getInstance().darkModeChanged();
+    }
+
+private:
+    struct DelegateClass  : public ObjCClass<NSObject>
+    {
+        DelegateClass()  : ObjCClass<NSObject> ("JUCEDelegate_")
+        {
+            addIvar<NativeDarkModeChangeDetectorImpl*> ("owner");
+
+            JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wundeclared-selector")
+            addMethod (@selector (darkModeChanged:), darkModeChanged);
+            JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+
+            registerClass();
+        }
+
+        static void darkModeChanged (id self, SEL, NSNotification*)
+        {
+            if (auto* owner = getIvar<NativeDarkModeChangeDetectorImpl*> (self, "owner"))
+                owner->darkModeChanged();
+        }
+    };
+
+    id delegate = nil;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NativeDarkModeChangeDetectorImpl)
+};
+
+std::unique_ptr<Desktop::NativeDarkModeChangeDetectorImpl> Desktop::createNativeDarkModeChangeDetectorImpl()
+{
+    return std::make_unique<NativeDarkModeChangeDetectorImpl>();
+}
+
 //==============================================================================
 class ScreenSaverDefeater   : public Timer
 {
@@ -578,13 +644,17 @@ static void selectImageForDrawing (const Image& image)
 {
     [NSGraphicsContext saveGraphicsState];
 
-   #if (defined (MAC_OS_X_VERSION_10_10) && MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_10)
-    [NSGraphicsContext setCurrentContext: [NSGraphicsContext graphicsContextWithCGContext: juce_getImageContext (image)
-                                                                                  flipped: false]];
-   #else
+    if (@available (macOS 10.10, *))
+    {
+        [NSGraphicsContext setCurrentContext: [NSGraphicsContext graphicsContextWithCGContext: juce_getImageContext (image)
+                                                                                      flipped: false]];
+        return;
+    }
+
+    JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wdeprecated-declarations")
     [NSGraphicsContext setCurrentContext: [NSGraphicsContext graphicsContextWithGraphicsPort: juce_getImageContext (image)
                                                                                      flipped: false]];
-   #endif
+    JUCE_END_IGNORE_WARNINGS_GCC_LIKE
 }
 
 static void releaseImageAfterDrawing()
@@ -635,7 +705,6 @@ static Image createNSWindowSnapshot (NSWindow* nsWindow)
     }
 }
 
-Image createSnapshotOfNativeWindow (void*);
 Image createSnapshotOfNativeWindow (void* nativeWindowHandle)
 {
     if (id windowOrView = (id) nativeWindowHandle)
@@ -675,12 +744,6 @@ void Process::setDockIconVisible (bool isVisible)
                                                          : kProcessTransformToUIElementApplication);
     jassert (err == 0);
     ignoreUnused (err);
-}
-
-bool Desktop::isOSXDarkModeActive()
-{
-    return [[[NSUserDefaults standardUserDefaults] stringForKey: nsStringLiteral ("AppleInterfaceStyle")]
-                isEqualToString: nsStringLiteral ("Dark")];
 }
 
 } // namespace juce

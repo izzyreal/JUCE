@@ -131,6 +131,7 @@ public:
     void saveDocumentAsync (const File& file, std::function<void (Result)> callback) override;
 
     void saveProject (Async, ProjectExporter* exporterToSave, std::function<void (Result)> onCompletion);
+    void saveAndMoveTemporaryProject (bool openInIDE);
     Result saveResourcesOnly();
     void openProjectInIDE (ProjectExporter& exporterToOpen);
 
@@ -209,8 +210,14 @@ public:
     bool shouldDisplaySplashScreen() const               { return displaySplashScreenValue.get(); }
     String getSplashScreenColourString() const           { return splashScreenColourValue.get(); }
 
-    static StringArray getCppStandardStrings()           { return { "C++14", "C++17", "Use Latest" }; }
-    static Array<var> getCppStandardVars()               { return { "14",    "17",    "latest" }; }
+    static StringArray getCppStandardStrings()           { return { "C++14", "C++17", "C++20", "Use Latest" }; }
+    static Array<var> getCppStandardVars()               { return { "14",    "17",    "20",    "latest" }; }
+
+    static String getLatestNumberedCppStandardString()
+    {
+        auto cppStandardVars = getCppStandardVars();
+        return cppStandardVars[cppStandardVars.size() - 2];
+    }
 
     String getCppStandardString() const                  { return cppStandardValue.get(); }
 
@@ -236,7 +243,7 @@ public:
     String getVSTNumMIDIInputsString() const          { return pluginVSTNumMidiInputsValue.get(); }
     String getVSTNumMIDIOutputsString() const         { return pluginVSTNumMidiOutputsValue.get(); }
 
-    static bool checkMultiChoiceVar (const ValueWithDefault& valueToCheck, Identifier idToCheck) noexcept
+    static bool checkMultiChoiceVar (const ValueTreePropertyWithDefault& valueToCheck, Identifier idToCheck) noexcept
     {
         if (! valueToCheck.get().isArray())
             return false;
@@ -455,10 +462,10 @@ public:
     struct ConfigFlag
     {
         String symbol, description, sourceModuleID;
-        ValueWithDefault value;
+        ValueTreePropertyWithDefault value;
     };
 
-    ValueWithDefault getConfigFlag (const String& name);
+    ValueTreePropertyWithDefault getConfigFlag (const String& name);
     bool isConfigFlagEnabled (const String& name, bool defaultIsEnabled = false) const;
 
     //==============================================================================
@@ -535,15 +542,15 @@ private:
     //==============================================================================
     ValueTree projectRoot  { Ids::JUCERPROJECT };
 
-    ValueWithDefault projectNameValue, projectUIDValue, projectLineFeedValue, projectTypeValue, versionValue, bundleIdentifierValue, companyNameValue,
-                     companyCopyrightValue, companyWebsiteValue, companyEmailValue, displaySplashScreenValue, splashScreenColourValue, cppStandardValue,
-                     headerSearchPathsValue, preprocessorDefsValue, userNotesValue, maxBinaryFileSizeValue, includeBinaryDataInJuceHeaderValue, binaryDataNamespaceValue,
-                     compilerFlagSchemesValue, postExportShellCommandPosixValue, postExportShellCommandWinValue, useAppConfigValue, addUsingNamespaceToJuceHeader;
+    ValueTreePropertyWithDefault projectNameValue, projectUIDValue, projectLineFeedValue, projectTypeValue, versionValue, bundleIdentifierValue, companyNameValue,
+                                 companyCopyrightValue, companyWebsiteValue, companyEmailValue, displaySplashScreenValue, splashScreenColourValue, cppStandardValue,
+                                 headerSearchPathsValue, preprocessorDefsValue, userNotesValue, maxBinaryFileSizeValue, includeBinaryDataInJuceHeaderValue, binaryDataNamespaceValue,
+                                 compilerFlagSchemesValue, postExportShellCommandPosixValue, postExportShellCommandWinValue, useAppConfigValue, addUsingNamespaceToJuceHeader;
 
-    ValueWithDefault pluginFormatsValue, pluginNameValue, pluginDescriptionValue, pluginManufacturerValue, pluginManufacturerCodeValue,
-                     pluginCodeValue, pluginChannelConfigsValue, pluginCharacteristicsValue, pluginAUExportPrefixValue, pluginAAXIdentifierValue,
-                     pluginAUMainTypeValue, pluginAUSandboxSafeValue, pluginRTASCategoryValue, pluginVSTCategoryValue, pluginVST3CategoryValue, pluginAAXCategoryValue,
-                     pluginVSTNumMidiInputsValue, pluginVSTNumMidiOutputsValue;
+    ValueTreePropertyWithDefault pluginFormatsValue, pluginNameValue, pluginDescriptionValue, pluginManufacturerValue, pluginManufacturerCodeValue,
+                                 pluginCodeValue, pluginChannelConfigsValue, pluginCharacteristicsValue, pluginAUExportPrefixValue, pluginAAXIdentifierValue,
+                                 pluginAUMainTypeValue, pluginAUSandboxSafeValue, pluginRTASCategoryValue, pluginVSTCategoryValue, pluginVST3CategoryValue, pluginAAXCategoryValue,
+                                 pluginVSTNumMidiInputsValue, pluginVSTNumMidiOutputsValue;
 
     //==============================================================================
     std::unique_ptr<EnabledModulesList> enabledModulesList;
@@ -570,8 +577,6 @@ private:
     //==============================================================================
     File tempDirectory;
     std::pair<Time, String> cachedFileState;
-
-    void saveAndMoveTemporaryProject (bool openInIDE);
 
     //==============================================================================
     friend class Item;

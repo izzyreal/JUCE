@@ -35,7 +35,7 @@
 
   ID:                 juce_gui_basics
   vendor:             juce
-  version:            6.1.0
+  version:            6.1.5
   name:               JUCE GUI core classes
   description:        Basic user-interface components and related classes.
   website:            http://www.juce.com/juce
@@ -161,6 +161,11 @@ namespace juce
 
     class FlexBox;
     class Grid;
+    class FocusOutline;
+
+   #if JUCE_MAC || JUCE_WINDOWS || JUCE_LINUX
+    Image createSnapshotOfNativeWindow (void* nativeWindowHandle);
+   #endif
 }
 
 #include "mouse/juce_MouseCursor.h"
@@ -256,6 +261,8 @@ namespace juce
 #include "menus/juce_BurgerMenuComponent.h"
 #include "buttons/juce_ToolbarButton.h"
 #include "misc/juce_DropShadower.h"
+#include "misc/juce_FocusOutline.h"
+#include "misc/juce_JUCESplashScreen.h"
 #include "widgets/juce_TreeView.h"
 #include "windows/juce_TopLevelWindow.h"
 #include "windows/juce_MessageBoxOptions.h"
@@ -366,3 +373,4 @@ namespace juce
 
 #include "layout/juce_GridItem.h"
 #include "layout/juce_Grid.h"
+#include "native/juce_ScopedDPIAwarenessDisabler.h"

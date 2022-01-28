@@ -35,10 +35,6 @@ struct SimpleDeviceManagerInputLevelMeter  : public Component,
         inputLevelGetter = manager.getInputLevelGetter();
     }
 
-    ~SimpleDeviceManagerInputLevelMeter() override
-    {
-    }
-
     void timerCallback() override
     {
         if (isShowing())
@@ -692,13 +688,17 @@ private:
             sampleRateDropDown->onChange = nullptr;
         }
 
+        const auto getFrequencyString = [] (int rate) { return String (rate) + " Hz"; };
+
         for (auto rate : currentDevice->getAvailableSampleRates())
         {
-            auto intRate = roundToInt (rate);
-            sampleRateDropDown->addItem (String (intRate) + " Hz", intRate);
+            const auto intRate = roundToInt (rate);
+            sampleRateDropDown->addItem (getFrequencyString (intRate), intRate);
         }
 
-        sampleRateDropDown->setSelectedId (roundToInt (currentDevice->getCurrentSampleRate()), dontSendNotification);
+        const auto intRate = roundToInt (currentDevice->getCurrentSampleRate());
+        sampleRateDropDown->setText (getFrequencyString (intRate), dontSendNotification);
+
         sampleRateDropDown->onChange = [this] { updateConfig (false, false, true, false); };
     }
 

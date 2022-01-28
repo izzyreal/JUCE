@@ -27,7 +27,7 @@
 
 #include "../../ProjectSaving/jucer_ProjectExporter.h"
 #include "../../Utility/UI/PropertyComponents/jucer_FilePathPropertyComponent.h"
-#include "../../Utility/Helpers/jucer_ValueWithDefaultWrapper.h"
+#include "../../Utility/Helpers/jucer_ValueTreePropertyWithDefaultWrapper.h"
 
 #include "jucer_NewProjectWizard.h"
 
@@ -100,9 +100,9 @@ public:
         createProjectButton.onClick = [this]
         {
             chooser = std::make_unique<FileChooser> ("Save Project", NewProjectWizard::getLastWizardFolder());
-            auto flags = FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories;
+            auto browserFlags = FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories;
 
-            chooser->launchAsync (flags, [this] (const FileChooser& fc)
+            chooser->launchAsync (browserFlags, [this] (const FileChooser& fc)
             {
                 auto dir = fc.getResult();
 
@@ -117,7 +117,7 @@ public:
                                                     exportersValue.get(),
                                                     fileOptionsValue.get(),
                                                     modulePathValue.getCurrentValue(),
-                                                    modulePathValue.getWrappedValueWithDefault().isUsingDefault(),
+                                                    modulePathValue.getWrappedValueTreePropertyWithDefault().isUsingDefault(),
                                                     [safeThis, dir] (std::unique_ptr<Project> project)
                 {
                     if (safeThis == nullptr)
@@ -167,12 +167,12 @@ private:
 
     ValueTree settingsTree { "NewProjectSettings" };
 
-    ValueWithDefault projectNameValue { settingsTree, Ids::name,          nullptr, "NewProject" },
-                     modulesValue     { settingsTree, Ids::dependencies_, nullptr, projectTemplate.requiredModules, "," },
-                     exportersValue   { settingsTree, Ids::exporters,     nullptr, StringArray (ProjectExporter::getCurrentPlatformExporterTypeInfo().identifier.toString()), "," },
-                     fileOptionsValue { settingsTree, Ids::file,          nullptr, NewProjectTemplates::getVarForFileOption (projectTemplate.defaultFileOption) };
+    ValueTreePropertyWithDefault projectNameValue { settingsTree, Ids::name,          nullptr, "NewProject" },
+                                 modulesValue     { settingsTree, Ids::dependencies_, nullptr, projectTemplate.requiredModules, "," },
+                                 exportersValue   { settingsTree, Ids::exporters,     nullptr, StringArray (ProjectExporter::getCurrentPlatformExporterTypeInfo().identifier.toString()), "," },
+                                 fileOptionsValue { settingsTree, Ids::file,          nullptr, NewProjectTemplates::getVarForFileOption (projectTemplate.defaultFileOption) };
 
-    ValueWithDefaultWrapper modulePathValue;
+    ValueTreePropertyWithDefaultWrapper modulePathValue;
 
     PropertyPanel panel;
 
@@ -203,7 +203,7 @@ private:
 
     PropertyComponent* createModulePathPropertyComponent()
     {
-        return new FilePathPropertyComponent (modulePathValue.getWrappedValueWithDefault(), "Path to Modules", true);
+        return new FilePathPropertyComponent (modulePathValue.getWrappedValueTreePropertyWithDefault(), "Path to Modules", true);
     }
 
     PropertyComponent* createExportersPropertyValue()

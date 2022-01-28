@@ -47,7 +47,7 @@
 #pragma once
 
 #ifndef PIP_DEMO_UTILITIES_INCLUDED
- #include "../Assets/DemoUtilities.h"
+#include "../Assets/DemoUtilities.h"
 #endif
 
 //==============================================================================
@@ -435,7 +435,7 @@ struct ButtonsPage   : public Component
                            juceImage, 1.0f, getRandomBrightColour().withAlpha (0.8f),
                            0.5f);
 
-            ib->setBounds (260, 350, 100, 100);
+            ib->setBounds (45, 380, 100, 100);
             ib->setTooltip ("ImageButton - showing alpha-channel hit-testing and colour overlay when clicked");
         }
     }
@@ -571,7 +571,10 @@ struct MenuPage   : public Component
             struct CustomComponent  : public PopupMenu::CustomComponent
             {
                 CustomComponent (int widthIn, int heightIn, Colour backgroundIn)
-                    : idealWidth (widthIn), idealHeight (heightIn), background (backgroundIn)
+                    : PopupMenu::CustomComponent (false),
+                      idealWidth (widthIn),
+                      idealHeight (heightIn),
+                      background (backgroundIn)
                 {}
 
                 void getIdealSize (int& width, int& height) override

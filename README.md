@@ -1,12 +1,11 @@
 ![alt text](https://assets.juce.com/juce/JUCE_banner_github.png "JUCE")
 
-JUCE is an open-source cross-platform C++ application framework used for rapidly
-developing high quality desktop and mobile applications, including VST, AU (and AUv3),
-RTAS and AAX audio plug-ins. JUCE can be easily integrated with existing projects or can
-be used as a project generation tool via the [Projucer](https://juce.com/discover/projucer),
-which supports exporting projects for Xcode (macOS and iOS), Visual Studio, Android Studio,
-Code::Blocks, CLion and Linux Makefiles as well as containing a source code editor and
-live-coding engine which can be used for rapid prototyping.
+JUCE is an open-source cross-platform C++ application framework for creating high quality
+desktop and mobile applications, including VST, VST3, AU, AUv3, RTAS and AAX audio plug-ins.
+JUCE can be easily integrated with existing projects via CMake, or can be used as a project
+generation tool via the [Projucer](https://juce.com/discover/projucer), which supports
+exporting projects for Xcode (macOS and iOS), Visual Studio, Android Studio, Code::Blocks
+and Linux Makefiles as well as containing a source code editor.
 
 ## Getting Started
 
@@ -25,7 +24,7 @@ tool) or with CMake.
 The repository doesn't contain a pre-built Projucer so you will need to build it
 for your platform - Xcode, Visual Studio and Linux Makefile projects are located in
 [extras/Projucer/Builds](/extras/Projucer/Builds)
-(the minumum system requirements are listed in the __System Requirements__ section below).
+(the minimum system requirements are listed in the __System Requirements__ section below).
 The Projucer can then be used to create new JUCE projects, view tutorials and run examples.
 It is also possible to include the JUCE modules source code in an existing project directly,
 or build them into a static or dynamic library which can be linked into a project.
@@ -73,12 +72,7 @@ of the target you wish to build.
 
 ## Contributing
 
-For bug reports and features requests, please visit the [JUCE Forum](https://forum.juce.com/) -
-the JUCE developers are active there and will read every post and respond accordingly. When
-submitting a bug report, please ensure that it follows the
-[issue template](/.github/ISSUE_TEMPLATE.txt).
-We don't accept third party GitHub pull requests directly due to copyright restrictions
-but if you would like to contribute any changes please contact us.
+Please see our [contribution guidelines](.github/contributing.md).
 
 JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
 EXPRESSED OR IMPLIED, INCLUDING WARRANTY OF MERCHANTABILITY AND FITNESS FOR A

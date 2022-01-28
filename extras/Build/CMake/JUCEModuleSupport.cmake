@@ -502,6 +502,25 @@ function(juce_add_module module_path)
         target_compile_definitions(${module_name} INTERFACE LINUX=1)
     endif()
 
+    if((${module_name} STREQUAL "juce_audio_devices") AND (CMAKE_SYSTEM_NAME STREQUAL "Android"))
+        add_subdirectory("${module_path}/native/oboe")
+        target_link_libraries(${module_name} INTERFACE oboe)
+    endif()
+
+    if((${module_name} STREQUAL "juce_opengl") AND (CMAKE_SYSTEM_NAME STREQUAL "Android"))
+        set(platform_supports_gl3 0)
+
+        if(CMAKE_SYSTEM_VERSION VERSION_GREATER_EQUAL 18)
+            set(platform_supports_gl3 1)
+        endif()
+
+        if(platform_supports_gl3)
+            target_compile_definitions(${module_name} INTERFACE JUCE_ANDROID_GL_ES_VERSION_3_0=1)
+        endif()
+
+        target_link_libraries(${module_name} INTERFACE EGL $<IF:${platform_supports_gl3},GLESv3,GLESv2>)
+    endif()
+
     _juce_extract_metadata_block(JUCE_MODULE_DECLARATION "${module_path}/${module_header_name}" metadata_dict)
 
     _juce_get_metadata("${metadata_dict}" minimumCppStandard module_cpp_standard)
@@ -595,3 +614,18 @@ function(juce_add_modules)
     endforeach()
 endfunction()
 
+# When source groups are enabled, this function sets the HEADER_FILE_ONLY property on any module
+# source files that should not be built. This is called automatically by the juce_add_* functions.
+function(_juce_fixup_module_source_groups)
+    if(JUCE_ENABLE_MODULE_SOURCE_GROUPS)
+        get_property(all_modules GLOBAL PROPERTY _juce_module_names)
+
+        foreach(module_name IN LISTS all_modules)
+            get_target_property(path ${module_name} INTERFACE_JUCE_MODULE_PATH)
+            get_target_property(header_files ${module_name} INTERFACE_JUCE_MODULE_HEADERS)
+            get_target_property(source_files ${module_name} INTERFACE_JUCE_MODULE_SOURCES)
+            source_group(TREE ${path} PREFIX "JUCE Modules" FILES ${header_files} ${source_files})
+            set_source_files_properties(${header_files} PROPERTIES HEADER_FILE_ONLY TRUE)
+        endforeach()
+    endif()
+endfunction()

@@ -39,6 +39,22 @@ namespace juce
 */
 class VSTMidiEventList
 {
+    // "events" is expected to be a const- or non-const-ref to Vst2::VstEvents.
+    template <typename Events>
+    static auto& getEvent (Events& events, int index)
+    {
+        using EventType = decltype (&*events.events);
+
+        // We static cast rather than using a direct array index here to circumvent
+        // UB sanitizer's bounds-checks. The original struct is supposed to contain
+        // a variable-length array, but the declaration uses a size of "2" for this
+        // member.
+        return static_cast<EventType> (events.events)[index];
+    }
+
+    Vst2::VstEvent* const& getEvent (int index) const { return getEvent (*events, index); }
+    Vst2::VstEvent*      & getEvent (int index)       { return getEvent (*events, index); }
+
 public:
     //==============================================================================
     VSTMidiEventList()
@@ -57,77 +73,78 @@ public:
         numEventsUsed = 0;
 
         if (events != nullptr)
-            events->numberOfEvents = 0;
+            events->numEvents = 0;
     }
 
     void addEvent (const void* const midiData, int numBytes, int frameOffset)
     {
         ensureSize (numEventsUsed + 1);
 
-        void* const ptr = (Vst2::VstMidiEvent*) (events->events [numEventsUsed]);
-        auto* const e = (Vst2::VstMidiEvent*) ptr;
-        events->numberOfEvents = ++numEventsUsed;
+        void* const ptr = getEvent (numEventsUsed);
+        events->numEvents = ++numEventsUsed;
 
         if (numBytes <= 4)
         {
-            if (e->type == Vst2::vstSysExEventType)
+            auto* const e = static_cast<Vst2::VstMidiEvent*> (ptr);
+
+            if (e->type == Vst2::kVstSysExType)
             {
-                delete[] (((Vst2::VstSysExEvent*) ptr)->sysExDump);
-                e->type = Vst2::vstMidiEventType;
-                e->size = sizeof (Vst2::VstMidiEvent);
-                e->noteSampleLength = 0;
-                e->noteSampleOffset = 0;
-                e->tuning = 0;
-                e->noteVelocityOff = 0;
+                delete[] reinterpret_cast<Vst2::VstMidiSysexEvent*> (e)->sysexDump;
+                e->type = Vst2::kVstMidiType;
+                e->byteSize = sizeof (Vst2::VstMidiEvent);
+                e->noteLength = 0;
+                e->noteOffset = 0;
+                e->detune = 0;
+                e->noteOffVelocity = 0;
             }
 
-            e->sampleOffset = frameOffset;
+            e->deltaFrames = frameOffset;
             memcpy (e->midiData, midiData, (size_t) numBytes);
         }
         else
         {
-            auto* const se = (Vst2::VstSysExEvent*) ptr;
+            auto* const se = static_cast<Vst2::VstMidiSysexEvent*> (ptr);
 
-            if (se->type == Vst2::vstSysExEventType)
-                delete[] se->sysExDump;
+            if (se->type == Vst2::kVstSysExType)
+                delete[] se->sysexDump;
 
-            se->sysExDump = new char [(size_t) numBytes];
-            memcpy (se->sysExDump, midiData, (size_t) numBytes);
+            se->sysexDump = new char [(size_t) numBytes];
+            memcpy (se->sysexDump, midiData, (size_t) numBytes);
 
-            se->type = Vst2::vstSysExEventType;
-            se->size = sizeof (Vst2::VstSysExEvent);
-            se->offsetSamples = frameOffset;
+            se->type = Vst2::kVstSysExType;
+            se->byteSize = sizeof (Vst2::VstMidiSysexEvent);
+            se->deltaFrames = frameOffset;
             se->flags = 0;
-            se->sysExDumpSize = numBytes;
-            se->future1 = 0;
-            se->future2 = 0;
+            se->dumpBytes = numBytes;
+            se->resvd1 = 0;
+            se->resvd2 = 0;
         }
     }
 
     //==============================================================================
     // Handy method to pull the events out of an event buffer supplied by the host
     // or plugin.
-    static void addEventsToMidiBuffer (const Vst2::VstEventBlock* events, MidiBuffer& dest)
+    static void addEventsToMidiBuffer (const Vst2::VstEvents* events, MidiBuffer& dest)
     {
-        for (int i = 0; i < events->numberOfEvents; ++i)
+        for (int i = 0; i < events->numEvents; ++i)
         {
-            const Vst2::VstEvent* const e = events->events[i];
+            const auto* const e = getEvent (*events, i);
 
             if (e != nullptr)
             {
-                const void* const ptr = events->events[i];
+                const void* const ptr = e;
 
-                if (e->type == Vst2::vstMidiEventType)
+                if (e->type == Vst2::kVstMidiType)
                 {
-                    dest.addEvent ((const juce::uint8*) ((const Vst2::VstMidiEvent*) ptr)->midiData,
-                                   4, e->sampleOffset);
+                    dest.addEvent ((const juce::uint8*) static_cast<const Vst2::VstMidiEvent*> (ptr)->midiData,
+                                   4, e->deltaFrames);
                 }
-                else if (e->type == Vst2::vstSysExEventType)
+                else if (e->type == Vst2::kVstSysExType)
                 {
-                    const auto* se = (const Vst2::VstSysExEvent*) ptr;
-                    dest.addEvent ((const juce::uint8*) se->sysExDump,
-                                   (int) se->sysExDumpSize,
-                                   e->sampleOffset);
+                    const auto* se = static_cast<const Vst2::VstMidiSysexEvent*> (ptr);
+                    dest.addEvent ((const juce::uint8*) se->sysexDump,
+                                   (int) se->dumpBytes,
+                                   e->deltaFrames);
                 }
             }
         }
@@ -148,7 +165,7 @@ public:
                 events.realloc (size, 1);
 
             for (int i = numEventsAllocated; i < numEventsNeeded; ++i)
-                events->events[i] = allocateVSTEvent();
+                getEvent (i) = allocateVSTEvent();
 
             numEventsAllocated = numEventsNeeded;
         }
@@ -159,7 +176,7 @@ public:
         if (events != nullptr)
         {
             for (int i = numEventsAllocated; --i >= 0;)
-                freeVSTEvent (events->events[i]);
+                freeVSTEvent (getEvent (i));
 
             events.free();
             numEventsUsed = 0;
@@ -168,7 +185,7 @@ public:
     }
 
     //==============================================================================
-    HeapBlock<Vst2::VstEventBlock> events;
+    HeapBlock<Vst2::VstEvents> events;
 
 private:
     int numEventsUsed, numEventsAllocated;
@@ -189,9 +206,9 @@ private:
 
     static void freeVSTEvent (Vst2::VstEvent* e)
     {
-        if (e->type == Vst2::vstSysExEventType)
+        if (e->type == Vst2::kVstSysExType)
         {
-            delete[] (reinterpret_cast<Vst2::VstSysExEvent*> (e)->sysExDump);
+            delete[] (reinterpret_cast<Vst2::VstMidiSysexEvent*> (e)->sysexDump);
         }
 
         std::free (e);
