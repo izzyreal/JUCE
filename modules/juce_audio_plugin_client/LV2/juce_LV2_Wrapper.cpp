@@ -1146,7 +1146,7 @@ public:
                     channels[i] = portAudioOuts[i];
 
                     if (i < numInChans && portAudioIns[i] != portAudioOuts[i])
-                        FloatVectorOperations::copy (portAudioOuts [i], portAudioIns[i], sampleCount);
+                        FloatVectorOperations::copy (portAudioOuts [i], portAudioIns[i], (int) sampleCount);
                 }
 
                 for (; i < numInChans; ++i)
