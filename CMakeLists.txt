@@ -23,7 +23,7 @@
 
 cmake_minimum_required(VERSION 3.15)
 
-project(JUCE VERSION 6.1.5 LANGUAGES C CXX)
+project(JUCE VERSION 6.1.6 LANGUAGES C CXX)
 
 include(CMakeDependentOption)
 
@@ -141,8 +141,8 @@ configure_package_config_file("${JUCE_CMAKE_UTILS_DIR}/JUCEConfig.cmake.in"
 
 install(FILES "${JUCE_BINARY_DIR}/JUCEConfigVersion.cmake"
               "${JUCE_BINARY_DIR}/JUCEConfig.cmake"
-              "${JUCE_CMAKE_UTILS_DIR}/JUCEHelperTargets.cmake"
               "${JUCE_CMAKE_UTILS_DIR}/JUCECheckAtomic.cmake"
+              "${JUCE_CMAKE_UTILS_DIR}/JUCEHelperTargets.cmake"
               "${JUCE_CMAKE_UTILS_DIR}/JUCEModuleSupport.cmake"
               "${JUCE_CMAKE_UTILS_DIR}/JUCEUtils.cmake"
               "${JUCE_CMAKE_UTILS_DIR}/JUCEModuleSupport.cmake"
@@ -152,6 +152,7 @@ install(FILES "${JUCE_BINARY_DIR}/JUCEConfigVersion.cmake"
               "${JUCE_CMAKE_UTILS_DIR}/PIPConsole.cpp.in"
               "${JUCE_CMAKE_UTILS_DIR}/RecentFilesMenuTemplate.nib"
               "${JUCE_CMAKE_UTILS_DIR}/UnityPluginGUIScript.cs.in"
+              "${JUCE_CMAKE_UTILS_DIR}/checkBundleSigning.cmake"
               "${JUCE_CMAKE_UTILS_DIR}/copyDir.cmake"
               "${JUCE_CMAKE_UTILS_DIR}/juce_runtime_arch_detection.cpp"
               "${JUCE_CMAKE_UTILS_DIR}/lv2_ttl_generator.c"

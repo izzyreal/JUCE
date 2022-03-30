@@ -145,6 +145,7 @@
 #if JUCE_MAC || JUCE_IOS
 
  #if JUCE_MAC
+  #include "native/juce_mac_NSViewFrameWatcher.h"
   #include "native/juce_mac_NSViewComponent.mm"
   #include "native/juce_mac_AppleRemote.mm"
   #if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_8
