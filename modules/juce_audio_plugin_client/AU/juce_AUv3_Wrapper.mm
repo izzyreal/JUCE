@@ -1625,7 +1625,7 @@ private:
 
             // send MIDI
            #if JucePlugin_ProducesMidiOutput && JUCE_AUV3_MIDI_OUTPUT_SUPPORTED
-            if (@available (macOS 10.13, iOS 11.0, *))
+            if (@available (macOS 10.13, iOS 11.0, *) && getAudioProcessor().producesMidi())
             {
                 if (auto midiOut = midiOutputEventBlock)
                     for (const auto metadata : midiMessages)
