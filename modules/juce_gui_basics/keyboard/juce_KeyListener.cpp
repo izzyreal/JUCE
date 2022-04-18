@@ -31,9 +31,4 @@ bool KeyListener::keyStateChanged (const bool, Component*)
     return false;
 }
 
-bool KeyListener::keyEvent (const KeyEvent&, Component*)
-{
-    return false;
-}
-
 } // namespace juce

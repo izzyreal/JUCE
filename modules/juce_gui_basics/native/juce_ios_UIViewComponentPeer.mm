@@ -350,18 +350,6 @@ MultiTouchMapper<UITouch*> UIViewComponentPeer::currentTouches;
     return self;
 }
 
-- (void) pressesBegan:(NSSet*)presses withEvent:(UIPressesEvent *)event {
-  UIPress* p = [presses anyObject];
-  auto* peer = getViewPeer (self);
-  peer->handleRawKeyEvent(KeyEvent((int)p.key.keyCode, true));
-}
-
-- (void) pressesEnded:(NSSet*)presses withEvent:(UIPressesEvent *)event {
-  UIPress* p = [presses anyObject];
-  auto* peer = getViewPeer (self);
-  peer->handleRawKeyEvent(KeyEvent((int)p.key.keyCode, false));
-}
-
 - (NSUInteger) supportedInterfaceOrientations
 {
     return Orientations::getSupportedOrientations();

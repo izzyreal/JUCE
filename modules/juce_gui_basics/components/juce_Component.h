@@ -1884,8 +1884,6 @@ public:
     */
     virtual void modifierKeysChanged (const ModifierKeys& modifiers);
 
-    virtual bool keyEvent (const KeyEvent& keyEvent);
-    
     //==============================================================================
     /** Enumeration used by the focusGained() and focusLost() methods. */
     enum FocusChangeType

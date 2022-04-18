@@ -3211,7 +3211,6 @@ void Component::removeKeyListener (KeyListener* listenerToRemove)
 
 bool Component::keyPressed (const KeyPress&)            { return false; }
 bool Component::keyStateChanged (bool /*isKeyDown*/)    { return false; }
-bool Component::keyEvent (const KeyEvent&)              { return false; }
 
 void Component::modifierKeysChanged (const ModifierKeys& modifiers)
 {

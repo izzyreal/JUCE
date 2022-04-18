@@ -72,8 +72,6 @@ public:
         @see KeyPress, Component::keyStateChanged
     */
     virtual bool keyStateChanged (bool isKeyDown, Component* originatingComponent);
-    
-    virtual bool keyEvent(const KeyEvent& keyEvent, Component* originatingComponent);
 };
 
 } // namespace juce

@@ -345,8 +345,6 @@ public:
     */
     bool handleKeyPress (const KeyPress& key);
 
-    bool handleRawKeyEvent (const KeyEvent& keyEvent);
-    
     /** Called whenever a key is pressed or released.
         Returns true if the keystroke was used.
     */
@@ -385,7 +383,7 @@ public:
 
     //==============================================================================
     void handleMouseEvent (MouseInputSource::InputSourceType type, Point<float> positionWithinPeer, ModifierKeys newMods, float pressure,
-                           float orientation, int64 time, PenDetails pen = PenDetails(), int touchIndex = 0);
+                           float orientation, int64 time, PenDetails pen = {}, int touchIndex = 0);
 
     void handleMouseWheel (MouseInputSource::InputSourceType type, Point<float> positionWithinPeer,
                            int64 time, const MouseWheelDetails&, int touchIndex = 0);

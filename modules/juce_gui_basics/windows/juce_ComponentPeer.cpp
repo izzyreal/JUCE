@@ -219,31 +219,6 @@ bool ComponentPeer::handleKeyPress (const KeyPress& keyInfo)
     return keyWasUsed;
 }
 
-bool ComponentPeer::handleRawKeyEvent (const KeyEvent& keyEvent)
-{
-    bool eventWasUsed = false;
-
-    for (auto* target = getTargetForKeyPress(); target != nullptr; target = target->getParentComponent())
-    {
-        if (auto* keyListeners = target->keyListeners.get())
-        {
-            for (int i = keyListeners->size(); --i >= 0;)
-            {
-                eventWasUsed = keyListeners->getUnchecked(i)->keyEvent(keyEvent, target);
-
-                if (eventWasUsed)
-                    return eventWasUsed;
-
-                i = jmin (i, keyListeners->size());
-            }
-        }
-        
-        target->keyEvent(keyEvent);
-    }
-
-    return eventWasUsed;
-}
-
 bool ComponentPeer::handleKeyUpOrDown (const bool isKeyDown)
 {
     bool keyWasUsed = false;

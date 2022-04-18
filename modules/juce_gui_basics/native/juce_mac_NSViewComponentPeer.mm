@@ -111,8 +111,6 @@ public:
           isSharedWindow (viewToAttachTo != nil),
           lastRepaintTime (Time::getMillisecondCounter())
     {
-        installKeyboardHandler();
-        
         appFocusChangeCallback = appFocusChanged;
         isEventBlockedByModalComps = checkEventBlockedByModalComps;
 
@@ -248,8 +246,6 @@ public:
 
     ~NSViewComponentPeer() override
     {
-        removeKeyboardHandler();
-        
         [notificationCenter removeObserver: view];
         setOwner (view, nullptr);
 
@@ -894,7 +890,7 @@ public:
         return handleKeyEvent (ev, false)
                 || Component::getCurrentlyModalComponent() != nullptr;
     }
-    
+
     void redirectModKeyChange (NSEvent* ev)
     {
         // (need to retain this in case a modal loop runs and our event object gets lost)
@@ -907,92 +903,6 @@ public:
         handleModifierKeysChange();
     }
 
-    void removeKeyboardHandler()
-    {
-        if (_keyDownHandler) {
-            [NSEvent removeMonitor:_keyDownHandler];
-            _keyDownHandler = nil;
-        }
-        if (_keyUpHandler) {
-            [NSEvent removeMonitor:_keyUpHandler];
-            _keyUpHandler = nil;
-        }
-        if (_modifierKeyHandler) {
-            [NSEvent removeMonitor:_modifierKeyHandler];
-            _modifierKeyHandler = nil;
-        }
-    }
-    
-    void installKeyboardHandler()
-    {
-        removeKeyboardHandler();
-        
-        _keyDownHandler = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
-                                              handler:^NSEvent*(NSEvent* event)
-        {
-            handleRawKeyEvent(KeyEvent([event keyCode], true));
-            return event;
-        }];
-        
-        _keyUpHandler = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp
-                                              handler:^NSEvent*(NSEvent* event)
-        {
-            handleRawKeyEvent(KeyEvent([event keyCode], false));
-            return event;
-        }];
-
-        _modifierKeyHandler = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
-                                              handler:^NSEvent*(NSEvent* event)
-        {
-            auto code = [event keyCode];
-            
-            if (code == 0x3A || code == 0x3D) {
-                if ([event modifierFlags] & NSEventModifierFlagOption) {
-                    handleRawKeyEvent(KeyEvent(code, true));
-                } else if ([event modifierFlags] | NSEventModifierFlagOption) {
-                    handleRawKeyEvent(KeyEvent(code, false));
-                }
-            }
-            else if (code == 0x38 || code == 0x3C) {
-                if ([event modifierFlags] & NSEventModifierFlagShift) {
-                    handleRawKeyEvent(KeyEvent(code, true));
-                } else if ([event modifierFlags] | NSEventModifierFlagShift) {
-                    handleRawKeyEvent(KeyEvent(code, false));
-                }
-            }
-            else if (code == 0x3B || code == 0x3E) {
-                if ([event modifierFlags] & NSEventModifierFlagControl) {
-                    handleRawKeyEvent(KeyEvent(code, true));
-                } else if ([event modifierFlags] | NSEventModifierFlagControl) {
-                    handleRawKeyEvent(KeyEvent(code, false));
-                }
-            }
-            else if (code == 0x36 || code == 0x37) {
-                if ([event modifierFlags] & NSEventModifierFlagCommand) {
-                    handleRawKeyEvent(KeyEvent(code, true));
-                } else if ([event modifierFlags] | NSEventModifierFlagCommand) {
-                    handleRawKeyEvent(KeyEvent(code, false));
-                }
-            }
-            else if (code == 0x3F) {
-                if ([event modifierFlags] & NSEventModifierFlagFunction) {
-                    handleRawKeyEvent(KeyEvent(code, true));
-                } else if ([event modifierFlags] | NSEventModifierFlagFunction) {
-                    handleRawKeyEvent(KeyEvent(code, false));
-                }
-            }
-            else if (code == 0x39) {
-                if ([event modifierFlags] & NSEventModifierFlagCapsLock) {
-                    handleRawKeyEvent(KeyEvent(code, true));
-                } else if ([event modifierFlags] | NSEventModifierFlagCapsLock) {
-                    handleRawKeyEvent(KeyEvent(code, false));
-                }
-            }
-
-            return event;
-        }];
-    }
-    
     //==============================================================================
     void drawRect (NSRect r)
     {
@@ -1689,11 +1599,6 @@ public:
     //==============================================================================
     NSWindow* window = nil;
     NSView* view = nil;
-    
-    id _keyDownHandler = nil;
-    id _keyUpHandler = nil;
-    id _modifierKeyHandler = nil;
-    
     WeakReference<Component> safeComponent;
     bool isSharedWindow = false;
    #if USE_COREGRAPHICS_RENDERING
@@ -1825,21 +1730,17 @@ private:
             case NSEventTypeSystemDefined:
             case NSEventTypeApplicationDefined:
             case NSEventTypePeriodic:
-           #if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_8
             case NSEventTypeGesture:
-           #endif
             case NSEventTypeMagnify:
             case NSEventTypeSwipe:
             case NSEventTypeRotate:
             case NSEventTypeBeginGesture:
             case NSEventTypeEndGesture:
             case NSEventTypeQuickLook:
-          #if JUCE_64BIT
+           #if JUCE_64BIT
             case NSEventTypeSmartMagnify:
-           #if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_8
             case NSEventTypePressure:
            #endif
-          #endif
           #if defined (MAC_OS_X_VERSION_10_12) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_12
            #if JUCE_64BIT
             case NSEventTypeDirectTouch:
@@ -2016,7 +1917,7 @@ struct JuceNSViewClass   : public NSViewComponentPeerWrapper<ObjCClass<NSView>>
         addMethod (@selector (performKeyEquivalent:),           performKeyEquivalent);
 
         addProtocol (@protocol (NSTextInput));
-                
+
         registerClass();
     }
 
