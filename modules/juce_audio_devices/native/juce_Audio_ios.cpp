@@ -284,9 +284,11 @@ struct iOSAudioIODevice::Pimpl final : public AsyncUpdater
 
         if (category == AVAudioSessionCategoryPlayAndRecord)
         {
-            options |= AVAudioSessionCategoryOptionDefaultToSpeaker
-                     | AVAudioSessionCategoryOptionAllowBluetooth
-                     | AVAudioSessionCategoryOptionAllowAirPlay;
+            options |= (AVAudioSessionCategoryOptionDefaultToSpeaker
+                      /*| AVAudioSessionCategoryOptionAllowBluetooth */);
+
+            if (@available (iOS 14.5, *))
+                options |= AVAudioSessionCategoryOptionOverrideMutedMicrophoneInterruption;
 
             if (@available (iOS 10.0, *))
                 options |= AVAudioSessionCategoryOptionAllowBluetoothA2DP;
