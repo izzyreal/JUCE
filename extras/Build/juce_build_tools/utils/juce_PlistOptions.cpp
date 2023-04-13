@@ -351,25 +351,49 @@ namespace juce::build_tools
         dict->createNewChildElement ("key")->addTextElement ("AudioComponents");
         auto* componentArray = dict->createNewChildElement ("array");
 
-        auto* componentDict = componentArray->createNewChildElement ("dict");
+        {
+            auto *componentDict = componentArray->createNewChildElement("dict");
 
-        addPlistDictionaryKey (*componentDict, "name", pluginManufacturer + ": " + pluginName);
-        addPlistDictionaryKey (*componentDict, "description", pluginDescription);
-        addPlistDictionaryKey (*componentDict, "factoryFunction", pluginAUExportPrefix + "FactoryAUv3");
-        addPlistDictionaryKey (*componentDict, "manufacturer", pluginManufacturerCode.substring (0, 4));
-        addPlistDictionaryKey (*componentDict, "type", auMainType.removeCharacters ("'"));
-        addPlistDictionaryKey (*componentDict, "subtype", pluginCode.substring (0, 4));
-        addPlistDictionaryKey (*componentDict, "version", getAUVersionAsHexInteger (*this));
-        addPlistDictionaryKey (*componentDict, "sandboxSafe", true);
+            addPlistDictionaryKey(*componentDict, "name", pluginManufacturer + ": " + pluginName);
+            addPlistDictionaryKey(*componentDict, "description", pluginDescription);
+            addPlistDictionaryKey(*componentDict, "factoryFunction", pluginAUExportPrefix + "FactoryAUv3");
+            addPlistDictionaryKey(*componentDict, "manufacturer", pluginManufacturerCode.substring(0, 4));
+            addPlistDictionaryKey(*componentDict, "type", auMainType.removeCharacters("'"));
+            addPlistDictionaryKey(*componentDict, "subtype", pluginCode.substring(0, 4));
+            addPlistDictionaryKey(*componentDict, "version", getAUVersionAsHexInteger(*this));
+            addPlistDictionaryKey(*componentDict, "sandboxSafe", true);
 
-        componentDict->createNewChildElement ("key")->addTextElement ("tags");
-        auto* tagsArray = componentDict->createNewChildElement ("array");
+            componentDict->createNewChildElement("key")->addTextElement("tags");
+            auto *tagsArray = componentDict->createNewChildElement("array");
 
-        tagsArray->createNewChildElement ("string")
-                 ->addTextElement (isPluginSynth ? "Synth" : "Effects");
+            tagsArray->createNewChildElement("string")
+                    ->addTextElement(isPluginSynth ? "Synth" : "Effects");
 
-        if (auMainType.removeCharacters ("'") == "aumi")
-            tagsArray->createNewChildElement ("string")->addTextElement ("MIDI");
+            if (auMainType.removeCharacters("'") == "aumi")
+                tagsArray->createNewChildElement("string")->addTextElement("MIDI");
+        }
+
+        {
+            auto *componentDict = componentArray->createNewChildElement("dict");
+
+            addPlistDictionaryKey(*componentDict, "name", "Izmar: VMPC2000XL");
+            addPlistDictionaryKey(*componentDict, "description", "VMPC2000XL");
+            addPlistDictionaryKey(*componentDict, "factoryFunction", pluginAUExportPrefix + "FactoryAUv3");
+            addPlistDictionaryKey(*componentDict, "manufacturer", pluginManufacturerCode.substring(0, 4));
+            addPlistDictionaryKey(*componentDict, "type", "aumu");
+            addPlistDictionaryKey(*componentDict, "subtype", "2kXa");
+            addPlistDictionaryKey(*componentDict, "version", getAUVersionAsHexInteger(*this));
+            addPlistDictionaryKey(*componentDict, "sandboxSafe", true);
+
+            componentDict->createNewChildElement("key")->addTextElement("tags");
+            auto *tagsArray = componentDict->createNewChildElement("array");
+
+            tagsArray->createNewChildElement("string")
+                    ->addTextElement("Effects");
+
+            if (auMainType.removeCharacters("'") == "aumi")
+                tagsArray->createNewChildElement("string")->addTextElement("MIDI");
+        }
 
         return { plistKey, plistEntry };
     }
