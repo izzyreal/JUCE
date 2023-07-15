@@ -105,6 +105,8 @@ public:
 
         WeakReference<Component> deletionChecker (&component);
 
+        static int counter = 0;
+        if (counter++ < 10)
         XWindowSystem::getInstance()->setBounds (windowH, physicalBounds, isNowFullScreen);
 
         fullScreen = isNowFullScreen;
@@ -377,21 +379,21 @@ public:
 
     void updateBorderSize()
     {
-        if ((styleFlags & windowHasTitleBar) == 0)
-        {
-            windowBorder = ComponentPeer::OptionalBorderSize { BorderSize<int>() };
-        }
-        else if (! windowBorder
-                 || ((*windowBorder).getTopAndBottom() == 0 && (*windowBorder).getLeftAndRight() == 0))
-        {
-            windowBorder = [&]()
-            {
-                if (auto unscaledBorderSize = XWindowSystem::getInstance()->getBorderSize (windowH))
-                    return OptionalBorderSize { (*unscaledBorderSize).multipliedBy (1.0 / currentScaleFactor) };
-
-                return OptionalBorderSize {};
-            }();
-        }
+//        if ((styleFlags & windowHasTitleBar) == 0)
+//        {
+//            windowBorder = ComponentPeer::OptionalBorderSize { BorderSize<int>() };
+//        }
+//        else if (! windowBorder
+//                 || ((*windowBorder).getTopAndBottom() == 0 && (*windowBorder).getLeftAndRight() == 0))
+//        {
+//            windowBorder = [&]()
+//            {
+//                if (auto unscaledBorderSize = XWindowSystem::getInstance()->getBorderSize (windowH))
+//                    return OptionalBorderSize { (*unscaledBorderSize).multipliedBy (1.0 / currentScaleFactor) };
+//
+//                return OptionalBorderSize {};
+//            }();
+//        }
     }
 
     bool setWindowAssociation (::Window windowIn)

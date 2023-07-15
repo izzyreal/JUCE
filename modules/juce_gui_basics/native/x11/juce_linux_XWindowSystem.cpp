@@ -209,6 +209,7 @@ XWindowSystemUtilities::XSetting XWindowSystemUtilities::XSettings::getSetting (
 
 void XWindowSystemUtilities::XSettings::update()
 {
+    return;
     const GetXProperty prop { display,
                               settingsWindow,
                               settingsAtom,
@@ -1535,19 +1536,22 @@ static int getAllEventsMask (bool ignoresMouseClicks)
     X11Symbols::getInstance()->xInstallColormap (display, colormap);
 
     // Set up the window attributes
-    XSetWindowAttributes swa;
-    swa.border_pixel = 0;
-    swa.background_pixmap = None;
-    swa.colormap = colormap;
-    swa.override_redirect = ((styleFlags & ComponentPeer::windowIsTemporary) != 0) ? True : False;
-    swa.event_mask = getAllEventsMask (styleFlags & ComponentPeer::windowIgnoresMouseClicks);
+//    XSetWindowAttributes swa;
+//    swa.border_pixel = 0;
+//    swa.background_pixmap = None;
+//    swa.colormap = colormap;
+//    swa.override_redirect = ((styleFlags & ComponentPeer::windowIsTemporary) != 0) ? True : False;
+//    swa.event_mask = getAllEventsMask (styleFlags & ComponentPeer::windowIgnoresMouseClicks);
 
-    auto windowH = X11Symbols::getInstance()->xCreateWindow (display, parentToAddTo != 0 ? parentToAddTo : root,
-                                                             0, 0, 1, 1,
-                                                             0, visualAndDepth.depth, InputOutput, visualAndDepth.visual,
-                                                             CWBorderPixel | CWColormap | CWBackPixmap | CWEventMask | CWOverrideRedirect,
-                                                             &swa);
+//    auto windowH = X11Symbols::getInstance()->xCreateWindow (display, parentToAddTo != 0 ? parentToAddTo : root,
+//                                                             0, 0, 1, 1,
+//                                                             0, visualAndDepth.depth, InputOutput, visualAndDepth.visual,
+//                                                             CWBorderPixel | CWColormap | CWBackPixmap | CWEventMask | CWOverrideRedirect,
+//                                                             &swa);
 
+
+    int defaultScreen = DefaultScreen(display);
+    auto windowH = XCreateSimpleWindow(display, RootWindow(display, defaultScreen), 10, 10, 200, 200, 1, BlackPixel(display, defaultScreen), WhitePixel(display, defaultScreen));
     // Set the window context to identify the window handle object
     if (! peer->setWindowAssociation (windowH))
     {
@@ -1563,10 +1567,10 @@ static int getAllEventsMask (bool ignoresMouseClicks)
     // Set window manager hints
     if (auto wmHints = makeXFreePtr (X11Symbols::getInstance()->xAllocWMHints()))
     {
-        wmHints->flags = InputHint | StateHint;
-        wmHints->input = True;
-        wmHints->initial_state = NormalState;
-        X11Symbols::getInstance()->xSetWMHints (display, windowH, wmHints.get());
+//        wmHints->flags = InputHint | StateHint;
+//        wmHints->input = True;
+//        wmHints->initial_state = NormalState;
+//        X11Symbols::getInstance()->xSetWMHints (display, windowH, wmHints.get());
     }
 
     // Set class hint
@@ -1578,37 +1582,44 @@ static int getAllEventsMask (bool ignoresMouseClicks)
             classHint->res_name  = (char*) appName.getCharPointer().getAddress();
             classHint->res_class = (char*) appName.getCharPointer().getAddress();
 
-            X11Symbols::getInstance()->xSetClassHint (display, windowH, classHint.get());
+//            X11Symbols::getInstance()->xSetClassHint (display, windowH, classHint.get());
         }
     }
 
     // Set the window type
-    setWindowType (windowH, styleFlags);
+//    setWindowType (windowH, styleFlags);
 
     // Define decoration
-    if ((styleFlags & ComponentPeer::windowHasTitleBar) == 0)
-        removeWindowDecorations (windowH);
-    else
-        addWindowButtons (windowH, styleFlags);
+//    if ((styleFlags & ComponentPeer::windowHasTitleBar) == 0)
+//        removeWindowDecorations (windowH);
+//    else
+//        addWindowButtons (windowH, styleFlags);
 
     // Associate the PID, allowing to be shut down when something goes wrong
-    auto pid = (unsigned long) getpid();
-    xchangeProperty (windowH, atoms.pid, XA_CARDINAL, 32, &pid, 1);
+//    auto pid = (unsigned long) getpid();
+//    xchangeProperty (windowH, atoms.pid, XA_CARDINAL, 32, &pid, 1);
 
     // Set window manager protocols
-    xchangeProperty (windowH, atoms.protocols, XA_ATOM, 32, atoms.protocolList, 2);
+//    xchangeProperty (windowH, atoms.protocols, XA_ATOM, 32, atoms.protocolList, 2);
 
     // Set drag and drop flags
-    xchangeProperty (windowH, atoms.XdndTypeList, XA_ATOM, 32, atoms.allowedMimeTypes, numElementsInArray (atoms.allowedMimeTypes));
-    xchangeProperty (windowH, atoms.XdndActionList, XA_ATOM, 32, atoms.allowedActions, numElementsInArray (atoms.allowedActions));
-    xchangeProperty (windowH, atoms.XdndActionDescription, XA_STRING, 8, "", 0);
+//    xchangeProperty (windowH, atoms.XdndTypeList, XA_ATOM, 32, atoms.allowedMimeTypes, numElementsInArray (atoms.allowedMimeTypes));
+//    xchangeProperty (windowH, atoms.XdndActionList, XA_ATOM, 32, atoms.allowedActions, numElementsInArray (atoms.allowedActions));
+//    xchangeProperty (windowH, atoms.XdndActionDescription, XA_STRING, 8, "", 0);
 
-    auto dndVersion = XWindowSystemUtilities::Atoms::DndVersion;
-    xchangeProperty (windowH, atoms.XdndAware, XA_ATOM, 32, &dndVersion, 1);
+//    auto dndVersion = XWindowSystemUtilities::Atoms::DndVersion;
+//    xchangeProperty (windowH, atoms.XdndAware, XA_ATOM, 32, &dndVersion, 1);
 
-    unsigned long info[2] = { 0, 1 };
-    xchangeProperty (windowH, atoms.XembedInfo, atoms.XembedInfo, 32, (unsigned char*) info, 2);
-
+//    unsigned long info[2] = { 0, 1 };
+//    xchangeProperty (windowH, atoms.XembedInfo, atoms.XembedInfo, 32, (unsigned char*) info, 2);
+    XSizeHints* size_hints = XAllocSizeHints();
+    size_hints->flags = PAspect;
+    size_hints->min_aspect.x = 1;
+    size_hints->min_aspect.y = 1;
+    size_hints->max_aspect.x = 1;
+    size_hints->max_aspect.y = 1;
+    XSetWMNormalHints(display, windowH, size_hints);
+    XMapWindow(display, windowH);
     return windowH;
 }
 
@@ -1654,6 +1665,7 @@ void XWindowSystem::destroyWindow (::Window windowH)
 //==============================================================================
 void XWindowSystem::setTitle (::Window windowH, const String& title) const
 {
+    return;
     jassert (windowH != 0);
 
     XTextProperty nameProperty{};
@@ -1677,6 +1689,7 @@ void XWindowSystem::setTitle (::Window windowH, const String& title) const
 
 void XWindowSystem::setIcon (::Window windowH, const Image& newIcon) const
 {
+    return;
     jassert (windowH != 0);
 
     auto dataSize = newIcon.getWidth() * newIcon.getHeight() + 2;
@@ -1715,6 +1728,7 @@ void XWindowSystem::setIcon (::Window windowH, const Image& newIcon) const
 
 void XWindowSystem::setVisible (::Window windowH, bool shouldBeVisible) const
 {
+    return;
     jassert (windowH != 0);
 
     XWindowSystemUtilities::ScopedXLock xLock;
@@ -1727,6 +1741,7 @@ void XWindowSystem::setVisible (::Window windowH, bool shouldBeVisible) const
 
 void XWindowSystem::setBounds (::Window windowH, Rectangle<int> newBounds, bool isFullScreen) const
 {
+    return;
     jassert (windowH != 0);
 
     if (auto* peer = getPeerFor (windowH))
@@ -1765,11 +1780,23 @@ void XWindowSystem::setBounds (::Window windowH, Rectangle<int> newBounds, bool 
 
         if (auto hints = makeXFreePtr (X11Symbols::getInstance()->xAllocSizeHints()))
         {
-            hints->flags  = USSize | USPosition;
-            hints->x      = newBounds.getX();
-            hints->y      = newBounds.getY();
-            hints->width  = newBounds.getWidth();
-            hints->height = newBounds.getHeight();
+            hints->flags  = /*USSize | USPosition | */PAspect;
+//            hints->x      = newBounds.getX();
+//            hints->y      = newBounds.getY();
+//            hints->width  = newBounds.getWidth();
+//            hints->height = newBounds.getHeight();
+//            hints->x = 100;
+//            hints->y = 100;
+//            hints->width = 100;
+//            hints->height = 100;
+//            hints->min_width = 100;
+//            hints->max_width = 500;
+//            hints->min_height = 100;
+//            hints->max_height = 500;
+            hints->min_aspect.x = 1;
+            hints->min_aspect.y = 1;
+            hints->max_aspect.x = 1;
+            hints->max_aspect.y = 1;
             X11Symbols::getInstance()->xSetWMNormalHints (display, windowH, hints.get());
         }
 
@@ -1781,11 +1808,11 @@ void XWindowSystem::setBounds (::Window windowH, Rectangle<int> newBounds, bool 
             return {};
         }();
 
-        X11Symbols::getInstance()->xMoveResizeWindow (display, windowH,
-                                                      newBounds.getX() - nativeWindowBorder.getLeft(),
-                                                      newBounds.getY() - nativeWindowBorder.getTop(),
-                                                      (unsigned int) newBounds.getWidth(),
-                                                      (unsigned int) newBounds.getHeight());
+//        X11Symbols::getInstance()->xMoveResizeWindow (display, windowH,
+//                                                      newBounds.getX() - nativeWindowBorder.getLeft(),
+//                                                      newBounds.getY() - nativeWindowBorder.getTop(),
+//                                                      (unsigned int) newBounds.getWidth(),
+//                                                      (unsigned int) newBounds.getHeight());
     }
 }
 
@@ -1797,15 +1824,20 @@ void XWindowSystem::updateConstraints (::Window windowH) const
 
 void XWindowSystem::updateConstraints (::Window windowH, ComponentPeer& peer) const
 {
+    return;
     XWindowSystemUtilities::ScopedXLock xLock;
 
     if (auto hints = makeXFreePtr (X11Symbols::getInstance()->xAllocSizeHints()))
     {
         if ((peer.getStyleFlags() & ComponentPeer::windowIsResizable) == 0)
         {
-            hints->min_width  = hints->max_width  = peer.getBounds().getWidth();
-            hints->min_height = hints->max_height = peer.getBounds().getHeight();
-            hints->flags = PMinSize | PMaxSize;
+//            hints->min_width  = hints->max_width  = peer.getBounds().getWidth();
+//            hints->min_height = hints->max_height = peer.getBounds().getHeight();
+            hints->flags = /*PMinSize | PMaxSize*/ PAspect;
+            hints->min_aspect.x = 1;
+            hints->min_aspect.y = 1;
+            hints->max_aspect.x = 1;
+            hints->max_aspect.y = 1;
         }
         else if (auto* c = peer.getConstrainer())
         {
@@ -1820,11 +1852,19 @@ void XWindowSystem::updateConstraints (::Window windowH, ComponentPeer& peer) co
             const auto factor       = peer.getPlatformScaleFactor();
             const auto leftAndRight = windowBorder.getLeftAndRight();
             const auto topAndBottom = windowBorder.getTopAndBottom();
-            hints->min_width  = jmax (1, (int) (factor * c->getMinimumWidth())  - leftAndRight);
-            hints->max_width  = jmax (1, (int) (factor * c->getMaximumWidth())  - leftAndRight);
-            hints->min_height = jmax (1, (int) (factor * c->getMinimumHeight()) - topAndBottom);
-            hints->max_height = jmax (1, (int) (factor * c->getMaximumHeight()) - topAndBottom);
-            hints->flags = PMinSize | PMaxSize;
+//            hints->min_width  = jmax (1, (int) (factor * c->getMinimumWidth())  - leftAndRight);
+//            hints->max_width  = jmax (1, (int) (factor * c->getMaximumWidth())  - leftAndRight);
+//            hints->min_height = jmax (1, (int) (factor * c->getMinimumHeight()) - topAndBottom);
+//            hints->max_height = jmax (1, (int) (factor * c->getMaximumHeight()) - topAndBottom);
+//            hints->min_width = 100;
+//            hints->max_width = 500;
+//            hints->min_height = 100;
+//            hints->max_height = 500;
+            hints->min_aspect.x = 1;
+            hints->min_aspect.y = 1;
+            hints->max_aspect.x = 1;
+            hints->max_aspect.y = 1;
+            hints->flags = /*PMinSize | PMaxSize*/ PAspect;
         }
 
         X11Symbols::getInstance()->xSetWMNormalHints (display, windowH, hints.get());
@@ -1846,7 +1886,7 @@ bool XWindowSystem::contains (::Window windowH, Point<int> localPos) const
 
 ComponentPeer::OptionalBorderSize XWindowSystem::getBorderSize (::Window windowH) const
 {
-    jassert (windowH != 0);
+/*    jassert (windowH != 0);
 
     XWindowSystemUtilities::ScopedXLock xLock;
     auto hints = XWindowSystemUtilities::Atoms::getIfExists (display, "_NET_FRAME_EXTENTS");
@@ -1868,7 +1908,7 @@ ComponentPeer::OptionalBorderSize XWindowSystem::getBorderSize (::Window windowH
 
             return ComponentPeer::OptionalBorderSize ({ (int) sizes[2], (int) sizes[0], (int) sizes[3], (int) sizes[1] });
         }
-    }
+    }*/
 
     return {};
 }
@@ -2685,6 +2725,7 @@ Array<Displays::Display> XWindowSystem::findDisplays (float masterScale) const
 
 ::Window XWindowSystem::createKeyProxy (::Window windowH)
 {
+    return windowH;
     jassert (windowH != 0);
 
     XSetWindowAttributes swa;
@@ -2862,6 +2903,7 @@ bool XWindowSystem::isFrontWindow (::Window windowH) const
 
 void XWindowSystem::xchangeProperty (::Window windowH, Atom property, Atom type, int format, const void* data, int numElements) const
 {
+    return;
     jassert (windowH != 0);
 
     X11Symbols::getInstance()->xChangeProperty (display, windowH, property, type, format, PropModeReplace, (const unsigned char*) data, numElements);
@@ -3200,11 +3242,11 @@ bool XWindowSystem::initialiseXDisplay()
 
     X11Symbols::getInstance()->xSync (display, False);
 
-    atoms = XWindowSystemUtilities::Atoms (display);
+//    atoms = XWindowSystemUtilities::Atoms (display);
 
-    initialisePointerMap();
-    updateModifierMappings();
-    initialiseXSettings();
+//    initialisePointerMap();
+//    updateModifierMappings();
+//    initialiseXSettings();
 
    #if JUCE_USE_XSHM
     if (XSHMHelpers::isShmAvailable (display))
