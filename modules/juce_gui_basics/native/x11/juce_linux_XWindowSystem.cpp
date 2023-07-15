@@ -1725,6 +1725,15 @@ void XWindowSystem::setVisible (::Window windowH, bool shouldBeVisible) const
         X11Symbols::getInstance()->xUnmapWindow (display, windowH);
 }
 
+void addAspectRatioToHints(::XSizeHints* hints)
+{
+    hints->min_aspect.x = 1298;
+    hints->min_aspect.y = 994;
+    hints->max_aspect.x = 1298;
+    hints->max_aspect.y = 994;
+    hints->flags = ( hints->flags | PAspect );
+}
+
 void XWindowSystem::setBounds (::Window windowH, Rectangle<int> newBounds, bool isFullScreen) const
 {
     jassert (windowH != 0);
@@ -1770,6 +1779,7 @@ void XWindowSystem::setBounds (::Window windowH, Rectangle<int> newBounds, bool 
             hints->y      = newBounds.getY();
             hints->width  = newBounds.getWidth();
             hints->height = newBounds.getHeight();
+            addAspectRatioToHints(hints.get());
             X11Symbols::getInstance()->xSetWMNormalHints (display, windowH, hints.get());
         }
 
@@ -1825,6 +1835,7 @@ void XWindowSystem::updateConstraints (::Window windowH, ComponentPeer& peer) co
             hints->min_height = jmax (1, (int) (factor * c->getMinimumHeight()) - topAndBottom);
             hints->max_height = jmax (1, (int) (factor * c->getMaximumHeight()) - topAndBottom);
             hints->flags = PMinSize | PMaxSize;
+            addAspectRatioToHints(hints.get());
         }
 
         X11Symbols::getInstance()->xSetWMNormalHints (display, windowH, hints.get());
