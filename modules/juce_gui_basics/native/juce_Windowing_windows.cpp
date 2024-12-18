@@ -394,8 +394,9 @@ static void loadDPIAwarenessFunctions()
 
     getDPIForMonitor                    = (GetDPIForMonitorFunc) GetProcAddress (shcoreModule, "GetDpiForMonitor");
     setProcessDPIAwareness              = (SetProcessDPIAwarenessFunc) GetProcAddress (shcoreModule, "SetProcessDpiAwareness");
-
-   #if JUCE_WIN_PER_MONITOR_DPI_AWARE
+printf("Exec1\n");
+   #if JUCE_WIN_PER_MONITOR_DPI_AWARE_FOOBAR
+printf("Exec2\n");
     getDPIForWindow                     = (GetDPIForWindowFunc) getUser32Function ("GetDpiForWindow");
     getProcessDPIAwareness              = (GetProcessDPIAwarenessFunc) GetProcAddress (shcoreModule, "GetProcessDpiAwareness");
     getWindowDPIAwarenessContext        = (GetWindowDPIAwarenessContextFunc) getUser32Function ("GetWindowDpiAwarenessContext");
@@ -3820,10 +3821,17 @@ private:
                         RECT client{};
                         ::GetWindowRect (h, &client);
 
-                        const auto dpi = GetDpiForWindow (hwnd);
-                        const auto padding = GetSystemMetricsForDpi (SM_CXPADDEDBORDER, dpi);
-                        const auto borderX = GetSystemMetricsForDpi (SM_CXFRAME, dpi) + padding;
-                        const auto borderY = GetSystemMetricsForDpi (SM_CYFRAME, dpi) + padding;
+			std::function<int(int, int)> GetSystemMetricsForDpiWin7 = [](int nIndex, int dpi) {
+                            int systemMetric = GetSystemMetrics(nIndex);
+			    return MulDiv(systemMetric, dpi, 96);
+			};
+
+                        //const auto dpi = GetDpiForWindow (hwnd);
+			HDC hdc = GetDC(NULL);
+			int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
+                        const auto padding = GetSystemMetricsForDpiWin7 (SM_CXPADDEDBORDER, dpi);
+                        const auto borderX = GetSystemMetricsForDpiWin7 (SM_CXFRAME, dpi) + padding;
+                        const auto borderY = GetSystemMetricsForDpiWin7 (SM_CYFRAME, dpi) + padding;
 
                         const auto left   = cursor.x < client.left + borderX;
                         const auto right  = client.right - borderX < cursor.x;
