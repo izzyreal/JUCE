@@ -1,45 +1,10 @@
-/*
-  ==============================================================================
-
-   This file is part of the JUCE framework.
-   Copyright (c) Raw Material Software Limited
-
-   JUCE is an open source framework subject to commercial or open source
-   licensing.
-
-   By downloading, installing, or using the JUCE framework, or combining the
-   JUCE framework with any other source code, object code, content or any other
-   copyrightable work, you agree to the terms of the JUCE End User Licence
-   Agreement, and all incorporated terms including the JUCE Privacy Policy and
-   the JUCE Website Terms of Service, as applicable, which will bind you. If you
-   do not agree to the terms of these agreements, we will not license the JUCE
-   framework to you, and you must discontinue the installation or download
-   process and cease use of the JUCE framework.
-
-   JUCE End User Licence Agreement: https://juce.com/legal/juce-8-licence/
-   JUCE Privacy Policy: https://juce.com/juce-privacy-policy
-   JUCE Website Terms of Service: https://juce.com/juce-website-terms-of-service/
-
-   Or:
-
-   You may also use this code under the terms of the AGPLv3:
-   https://www.gnu.org/licenses/agpl-3.0.en.html
-
-   THE JUCE FRAMEWORK IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL
-   WARRANTIES, WHETHER EXPRESSED OR IMPLIED, INCLUDING WARRANTY OF
-   MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, ARE DISCLAIMED.
-
-  ==============================================================================
-*/
-
 namespace juce
 {
-
 struct DxgiAdapter : public ReferenceCountedObject
 {
     using Ptr = ReferenceCountedObjectPtr<DxgiAdapter>;
 
-    static Ptr create (ComSmartPtr<ID2D1Factory2> d2dFactory, ComSmartPtr<IDXGIAdapter1> dxgiAdapterIn)
+    static Ptr create (ComSmartPtr<ID2D1Factory1> d2dFactory, ComSmartPtr<IDXGIAdapter1> dxgiAdapterIn)
     {
         if (dxgiAdapterIn == nullptr || d2dFactory == nullptr)
             return {};
@@ -58,8 +23,6 @@ struct DxgiAdapter : public ReferenceCountedObject
             result->dxgiOutputs.push_back (output);
         }
 
-        // This flag adds support for surfaces with a different color channel ordering
-        // than the API default. It is required for compatibility with Direct2D.
         const auto creationFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 
         if (const auto hr = D3D11CreateDevice (result->dxgiAdapter,
@@ -125,7 +88,7 @@ struct DxgiAdapterListener
 class DxgiAdapters
 {
 public:
-    explicit DxgiAdapters (ComSmartPtr<ID2D1Factory2> d2dFactoryIn)
+    explicit DxgiAdapters (ComSmartPtr<ID2D1Factory1> d2dFactoryIn)
         : d2dFactory (d2dFactoryIn)
     {
         updateAdapters();
@@ -148,9 +111,6 @@ public:
 
         if (factory == nullptr)
         {
-            // If you hit this, we were unable to create a DXGI Factory, so we won't be able to
-            // render anything using Direct2D.
-            // Maybe this version of Windows doesn't have Direct2D support.
             jassertfalse;
             return;
         }
@@ -183,35 +143,6 @@ public:
         return adapterArray;
     }
 
-    auto getFactory() const
-    {
-        return factory;
-    }
-
-    DxgiAdapter::Ptr getAdapterForHwnd (HWND hwnd) const
-    {
-        const auto monitor = MonitorFromWindow (hwnd, MONITOR_DEFAULTTONULL);
-
-        if (monitor == nullptr)
-            return getDefaultAdapter();
-
-        for (auto& adapter : adapterArray)
-        {
-            for (const auto& dxgiOutput : adapter->dxgiOutputs)
-            {
-                DXGI_OUTPUT_DESC desc{};
-
-                if (FAILED (dxgiOutput->GetDesc (&desc)))
-                    continue;
-
-                if (desc.Monitor == monitor)
-                    return adapter;
-            }
-        }
-
-        return getDefaultAdapter();
-    }
-
     DxgiAdapter::Ptr getDefaultAdapter() const
     {
         return adapterArray.getFirst();
@@ -228,30 +159,19 @@ public:
     }
 
 private:
-    static ComSmartPtr<IDXGIFactory2> makeDxgiFactory()
+    static ComSmartPtr<IDXGIFactory1> makeDxgiFactory()
     {
-        JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wlanguage-extension-token")
-        ComSmartPtr<IDXGIFactory2> result;
-        if (const auto hr = CreateDXGIFactory2 (0, __uuidof (IDXGIFactory2), (void**) result.resetAndGetPointerAddress()); SUCCEEDED (hr))
+        ComSmartPtr<IDXGIFactory1> result;
+        if (const auto hr = CreateDXGIFactory1 (__uuidof (IDXGIFactory1), (void**) result.resetAndGetPointerAddress()); SUCCEEDED (hr))
             return result;
-        JUCE_END_IGNORE_WARNINGS_GCC_LIKE
 
-        // If CreateDXGIFactory fails, check to see if this is being called in the context of DllMain.
-        // CreateDXGIFactory will always fail if called from the context of DllMain. In this case, the renderer
-        // will create a software image instead as a fallback, but that won't perform as well.
-        //
-        // You may be creating an Image as a static object, which will likely be created in the context of DllMain.
-        // Consider deferring your Image creation until later.
         jassertfalse;
         return {};
     }
 
-    ComSmartPtr<ID2D1Factory2> d2dFactory;
-
-    // It's possible that we'll need to add/remove listeners from background threads, especially in
-    // the case that Images are created on a background thread.
+    ComSmartPtr<ID2D1Factory1> d2dFactory;
     ThreadSafeListenerList<DxgiAdapterListener> listeners;
-    ComSmartPtr<IDXGIFactory2> factory = makeDxgiFactory();
+    ComSmartPtr<IDXGIFactory1> factory = makeDxgiFactory();
     ReferenceCountedArray<DxgiAdapter> adapterArray;
 };
 
@@ -263,19 +183,16 @@ public:
     auto getD2DFactory() const { return d2dSharedFactory; }
 
 private:
-    ComSmartPtr<ID2D1Factory2> d2dSharedFactory = [&]
+    ComSmartPtr<ID2D1Factory1> d2dSharedFactory = [&]
     {
         D2D1_FACTORY_OPTIONS options;
         options.debugLevel = D2D1_DEBUG_LEVEL_NONE;
-        JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wlanguage-extension-token")
-        ComSmartPtr<ID2D1Factory2> result;
+        ComSmartPtr<ID2D1Factory1> result;
         auto hr = D2D1CreateFactory (D2D1_FACTORY_TYPE_MULTI_THREADED,
-                                     __uuidof (ID2D1Factory2),
+                                     __uuidof (ID2D1Factory1),
                                      &options,
                                      (void**) result.resetAndGetPointerAddress());
         jassertquiet (SUCCEEDED (hr));
-        JUCE_END_IGNORE_WARNINGS_GCC_LIKE
-
         return result;
     }();
 
@@ -332,7 +249,6 @@ struct D2DUtilities
     }
 };
 
-//==============================================================================
 struct Direct2DDeviceContext
 {
     static ComSmartPtr<ID2D1DeviceContext1> create (ComSmartPtr<ID2D1Device1> device)
@@ -362,7 +278,6 @@ struct Direct2DDeviceContext
     Direct2DDeviceContext() = delete;
 };
 
-//==============================================================================
 struct Direct2DBitmap
 {
     Direct2DBitmap() = delete;
@@ -377,14 +292,6 @@ struct Direct2DBitmap
 
         JUCE_TRACE_LOG_D2D_PAINT_CALL (etw::createDirect2DBitmapFromImage, etw::graphicsKeyword);
 
-        // Calling Image::convertedToFormat could cause unchecked recursion since convertedToFormat
-        // calls Graphics::drawImageAt which calls Direct2DGraphicsContext::drawImage which calls this function...
-        //
-        // Use a software image for the conversion instead so the Graphics::drawImageAt call doesn't go
-        // through the Direct2D renderer
-        //
-        // Be sure to explicitly set the DPI to 96.0 for the image; otherwise it will default to the screen DPI
-        // and may be scaled incorrectly
         const auto convertedImage = SoftwareImageType{}.convert (image).convertedToFormat (outputFormat);
 
         if (! convertedImage.isValid())
@@ -422,10 +329,6 @@ struct Direct2DBitmap
 
         JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME (Direct2DMetricsHub::getInstance()->imageContextMetrics, createBitmapTime);
 
-        // Verify that the GPU can handle a bitmap of this size
-        //
-        // If you need a bitmap larger than this, you'll need to either split it up into multiple bitmaps
-        // or use a software image (see SoftwareImageType).
         const auto maxBitmapSize = deviceContext->GetMaximumBitmapSize();
         jassertquiet (size.width <= maxBitmapSize && size.height <= maxBitmapSize);
 
@@ -449,13 +352,6 @@ struct Direct2DBitmap
     }
 };
 
-//==============================================================================
-/*  UpdateRegion extracts the invalid region for a window
-    UpdateRegion is used to service WM_PAINT to add the invalid region of a window to
-    deferredRepaints. UpdateRegion marks the region as valid, and the region should be painted on the
-    next vblank.
-    This is similar to the invalid region update in HWNDComponentPeer::handlePaintMessage()
-*/
 class UpdateRegion
 {
 public:
@@ -473,48 +369,16 @@ public:
 
         auto regionType = GetUpdateRgn (windowHandle, regionHandle, false);
 
-        if (regionType == SIMPLEREGION || regionType == COMPLEXREGION)
+        if (regionType == 1)
         {
-            auto regionDataBytes = GetRegionData (regionHandle, (DWORD) block.getSize(), (RGNDATA*) block.getData());
+            const auto bounds = D2DUtilities::toRECT_F (bounds);
+            numRect = AddRectRegion (regionHandle, bounds);
 
-            if (regionDataBytes > block.getSize())
-            {
-                block.ensureSize (regionDataBytes);
-                regionDataBytes = GetRegionData (regionHandle, (DWORD) block.getSize(), (RGNDATA*) block.getData());
-            }
-
-            if (regionDataBytes > 0)
-            {
-                auto header = (RGNDATAHEADER const* const) block.getData();
-
-                if (header->iType == RDH_RECTANGLES)
-                    numRect = header->nCount;
-            }
+            ValidateRect (windowHandle, &bounds);
         }
-
-        if (numRect > 0)
-            ValidateRgn (windowHandle, regionHandle);
-        else
-            ValidateRect (windowHandle, nullptr);
-
-        DeleteObject (regionHandle);
-    }
-
-    void clear()
-    {
-        numRect = 0;
-    }
-
-    Span<const RECT> getRects() const
-    {
-        auto header = (RGNDATAHEADER const* const) block.getData();
-        auto* data = (RECT*) (header + 1);
-        return { data, numRect };
     }
 
 private:
-    MemoryBlock block { 1024 };
-    uint32 numRect = 0;
+    RECT bounds {};
 };
-
 } // namespace juce
