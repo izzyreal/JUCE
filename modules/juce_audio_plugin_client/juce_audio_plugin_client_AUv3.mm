@@ -128,7 +128,6 @@ public:
           processorHolder (new AudioProcessorHolder (createPluginFilterOfType (AudioProcessor::wrapperType_AudioUnitv3)))
     {
         jassert (MessageManager::getInstance()->isThisTheMessageThread());
-        initialiseJuce_GUI();
 
         init();
     }
@@ -1728,6 +1727,7 @@ private:
 
     using ObserverPtr = std::unique_ptr<std::remove_pointer_t<AUParameterObserverToken>, ObserverDestructor>;
 
+    ScopedJuceInitialiser_GUI guiScope;
     AUAudioUnit* au;
     AudioProcessorHolder::Ptr processorHolder;
 
@@ -1799,7 +1799,6 @@ public:
     JuceAUViewController (AUViewController<AUAudioUnitFactory>* p)
         : myself (p)
     {
-        initialiseJuce_GUI();
     }
 
     ~JuceAUViewController()
@@ -1829,16 +1828,10 @@ public:
                     JUCE_IOS_MAC_VIEW* view = [[[JUCE_IOS_MAC_VIEW alloc] initWithFrame: convertToCGRect (editor->getBounds())] autorelease];
                     [myself setView: view];
 
-                   #if JUCE_IOS
                     editor->setVisible (false);
-                   #else
-                    editor->setVisible (true);
-                   #endif
-
-                    detail::PluginUtilities::addToDesktop (*editor, view);
 
                    #if JUCE_IOS
-                    if (JUCE_IOS_MAC_VIEW* peerView = [[[myself view] subviews] objectAtIndex: 0])
+                    if (auto* peerView = getPeerView())
                         [peerView setContentMode: UIViewContentModeTop];
 
                     if (auto* peer = dynamic_cast<UIViewPeerControllerReceiver*> (editor->getPeer()))
@@ -1862,16 +1855,21 @@ public:
 
                     editor->setBounds (convertToRectInt ([[myself view] bounds]));
 
-                    if (JUCE_IOS_MAC_VIEW* peerView = [[[myself view] subviews] objectAtIndex: 0])
-                    {
-                       #if JUCE_IOS
-                        [peerView setNeedsDisplay];
-                       #else
-                        [peerView setNeedsDisplay: YES];
-                       #endif
-                    }
+                    repaintView();
                 }
             }
+        }
+    }
+
+    void repaintView()
+    {
+        if (auto* peerView = getPeerView())
+        {
+           #if JUCE_IOS
+            [peerView setNeedsDisplay];
+           #else
+            [peerView setNeedsDisplay: YES];
+           #endif
         }
     }
 
@@ -1882,18 +1880,35 @@ public:
                 processor->memoryWarningReceived();
     }
 
-    void viewDidAppear (bool)
+    void viewWillDisappear()
     {
-        if (processorHolder.get() != nullptr)
-            if (AudioProcessorEditor* editor = getAudioProcessor().getActiveEditor())
-                editor->setVisible (true);
+        if (processorHolder.get() == nullptr)
+            return;
+
+        if (auto* editor = getAudioProcessor().getActiveEditor())
+            editor->removeFromDesktop();
     }
 
-    void viewDidDisappear (bool)
+    void viewDidAppear()
     {
-        if (processorHolder.get() != nullptr)
-            if (AudioProcessorEditor* editor = getAudioProcessor().getActiveEditor())
-                editor->setVisible (false);
+        if (processorHolder.get() == nullptr)
+            return;
+
+        if (auto* editor = getAudioProcessor().getActiveEditor())
+        {
+            editor->setVisible (true);
+            detail::PluginUtilities::addToDesktop (*editor, [myself view]);
+            editor->setBounds (convertToRectInt ([[myself view] bounds]));
+        }
+    }
+
+    void viewDidDisappear()
+    {
+        if (processorHolder.get() == nullptr)
+            return;
+
+        if (auto* editor = getAudioProcessor().getActiveEditor())
+            editor->setVisible (false);
     }
 
     CGSize getPreferredContentSize() const
@@ -1921,6 +1936,15 @@ public:
     }
 
 private:
+    JUCE_IOS_MAC_VIEW* getPeerView() const
+    {
+        if (auto* editor = getAudioProcessor().getActiveEditor())
+            if (auto* peer = editor->getPeer())
+                return static_cast<JUCE_IOS_MAC_VIEW*> (peer->getNativeHandle());
+
+        return nullptr;
+    }
+
     template <typename Callback>
     static void waitForExecutionOnMainThread (Callback&& callback)
     {
@@ -1965,6 +1989,7 @@ private:
     };
 
     //==============================================================================
+    ScopedJuceInitialiser_GUI guiScope;
     AUViewController<AUAudioUnitFactory>* myself;
     LockedProcessorHolder processorHolder;
     Rectangle<int> preferredSize { 1, 1 };
@@ -1994,8 +2019,13 @@ private:
 
 - (void) didReceiveMemoryWarning { cpp->didReceiveMemoryWarning(); }
 #if JUCE_IOS
-- (void) viewDidAppear: (BOOL) animated { cpp->viewDidAppear (animated); [super viewDidAppear:animated]; }
-- (void) viewDidDisappear: (BOOL) animated { cpp->viewDidDisappear (animated); [super viewDidDisappear:animated]; }
+- (void) viewDidAppear:     (BOOL) animated { cpp->viewDidAppear();     [super viewDidAppear:animated]; }
+- (void) viewDidDisappear:  (BOOL) animated { cpp->viewDidDisappear();  [super viewDidDisappear:animated]; }
+- (void) viewWillDisappear: (BOOL) animated { cpp->viewWillDisappear(); [super viewWillDisappear:animated]; }
+#else
+- (void) viewDidAppear     { cpp->viewDidAppear();     [super viewDidAppear]; }
+- (void) viewDidDisappear  { cpp->viewDidDisappear();  [super viewDidDisappear]; }
+- (void) viewWillDisappear { cpp->viewWillDisappear(); [super viewWillDisappear]; }
 #endif
 @end
 
