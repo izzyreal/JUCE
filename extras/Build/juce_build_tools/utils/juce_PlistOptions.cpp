@@ -290,8 +290,19 @@ namespace juce::build_tools
     {
         XmlElement plistKey ("key");
         plistKey.addTextElement ("AudioComponents");
-
         XmlElement plistEntry ("array");
+
+        const auto trimmedMainType = auMainType.removeCharacters("'");
+        std::vector<juce::String> auTypes { trimmedMainType };
+
+        if (auTypes.front().equalsIgnoreCase("aumf"))
+        {
+            auTypes.push_back("aumu");
+        }
+
+        for (auto &t : auTypes)
+        {
+
         auto* dict = plistEntry.createNewChildElement ("dict");
 
         auto truncatedCode = pluginManufacturerCode.substring (0, 4);
@@ -309,8 +320,8 @@ namespace juce::build_tools
         addPlistDictionaryKey (*dict, "description", pluginDescription);
         addPlistDictionaryKey (*dict, "factoryFunction", pluginAUExportPrefix + "Factory");
         addPlistDictionaryKey (*dict, "manufacturer", truncatedCode);
-        addPlistDictionaryKey (*dict, "type", auMainType.removeCharacters ("'"));
-        addPlistDictionaryKey (*dict, "subtype", pluginSubType);
+        addPlistDictionaryKey (*dict, "type", t);
+        addPlistDictionaryKey (*dict, "subtype", t == "aumf" ? pluginSubType : "2kXa");
         addPlistDictionaryKey (*dict, "version", getAUVersionAsHexInteger (*this));
 
         if (isAuSandboxSafe)
@@ -331,6 +342,7 @@ namespace juce::build_tools
             dict->createNewChildElement ("key")->addTextElement ("tags");
             auto* tagsArray = dict->createNewChildElement ("array");
             tagsArray->createNewChildElement ("string")->addTextElement ("ARA");
+        }
         }
 
         return { plistKey, plistEntry };
