@@ -317,7 +317,12 @@ class AUv3SynthProcessor final : public AudioProcessor
 {
 public:
     AUv3SynthProcessor()
-        : AudioProcessor (BusesProperties().withOutput ("Output", AudioChannelSet::stereo(), true)),
+        : AudioProcessor (BusesProperties()
+                          .withOutput ("STEREO1", AudioChannelSet::stereo(), true)
+                          .withOutput ("MONO1", AudioChannelSet::mono(), true)
+                          .withOutput ("MONO2", AudioChannelSet::mono(), true)
+                          .withOutput ("MONO3", AudioChannelSet::mono(), true)
+                          .withOutput ("MONO4", AudioChannelSet::mono(), true)),
           currentRecording (1, 1), currentProgram (0)
     {
         // initialize parameters
@@ -335,7 +340,16 @@ public:
     //==============================================================================
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override
     {
-        return (layouts.getMainOutputChannels() <= 2);
+        if (layouts.getMainOutputChannelSet() != AudioChannelSet::stereo())
+           return false;
+
+        // All other output buses must be mono
+        for (int ix = 1; ix < 5; ix++)
+        {
+            if (layouts.getChannelSet(false, ix) != AudioChannelSet::mono())
+                return false;
+        }
+        return true;
     }
 
     void prepareToPlay (double sampleRate, int estimatedMaxSizeOfBuffer) override
@@ -353,6 +367,7 @@ public:
 
     void processBlock (AudioBuffer<float>& buffer, MidiBuffer& midiMessages) override
     {
+        return;
         Reverb::Parameters reverbParameters;
         reverbParameters.roomSize = roomSizeParam->get();
 
