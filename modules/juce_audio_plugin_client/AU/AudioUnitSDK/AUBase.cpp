@@ -368,7 +368,7 @@ OSStatus AUBase::DispatchGetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScop
 
 	case kAudioUnitProperty_SupportedNumChannels: {
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
-		const UInt32 num = SupportedNumChannels(nullptr);
+        UInt32 num = 0;
 		AUSDK_Require(num != 0u, kAudioUnitErr_InvalidProperty);
 		outDataSize = sizeof(AUChannelInfo) * num;
 		outWritable = false;
@@ -377,7 +377,7 @@ OSStatus AUBase::DispatchGetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScop
 
 	case kAudioUnitProperty_SupportedChannelLayoutTags: {
 		const auto tags = GetChannelLayoutTags(inScope, inElement);
-		AUSDK_Require(!tags.empty(), kAudioUnitErr_InvalidProperty);
+        AUSDK_Require(!tags.empty(), kAudioUnitErr_InvalidProperty);
 		outDataSize = static_cast<UInt32>(tags.size() * sizeof(AudioChannelLayoutTag));
 		outWritable = false;
 		validateElement = false; // already done it
@@ -557,14 +557,11 @@ OSStatus AUBase::DispatchGetProperty(
 		mLastRenderError = 0;
 		break;
 
-	case kAudioUnitProperty_SupportedNumChannels: {
-		const AUChannelInfo* infoPtr = nullptr;
-		const UInt32 num = SupportedNumChannels(&infoPtr);
-		if (num != 0 && infoPtr != nullptr) {
-			memcpy(outData, infoPtr, num * sizeof(AUChannelInfo));
-		}
-		break;
-	}
+        case kAudioUnitProperty_SupportedNumChannels: {
+            static const AUChannelInfo channelConfigs[0]{};
+            memcpy(outData, channelConfigs, sizeof(channelConfigs));
+            break;
+        }
 
 	case kAudioUnitProperty_SupportedChannelLayoutTags: {
 		const auto tags = GetChannelLayoutTags(inScope, inElement);

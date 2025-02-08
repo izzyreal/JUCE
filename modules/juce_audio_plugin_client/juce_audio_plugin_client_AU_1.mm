@@ -920,11 +920,12 @@ public:
 
     std::vector<AudioChannelLayoutTag> GetChannelLayoutTags (AudioUnitScope inScope, AudioUnitElement inElement) override
     {
+        return {};
         const auto info = getElementInfo (inScope, inElement);
 
         if (info.error != noErr)
             return {};
-
+        
         if (busIgnoresLayout (info.isInput, info.busNr))
             return {};
 
