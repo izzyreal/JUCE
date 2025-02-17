@@ -116,8 +116,25 @@ public:
                            (UInt32) AudioUnitHelpers::getBusCountForWrapper (*juceFilter, true),
                            (UInt32) AudioUnitHelpers::getBusCountForWrapper (*juceFilter, false))
     {
-        inParameterChangedCallback = false;
+        const AudioComponent audioComponent = AudioComponentInstanceGetComponent(component);
+        AudioComponentDescription desc;
+        const OSStatus result = AudioComponentGetDescription(audioComponent, &desc);
+        
+        if (result == noErr)
+        {
+            const auto componentType = desc.componentType;
+            const std::string componentTypeStr {
+                static_cast<char>((componentType >> 24) & 0xFF),
+                static_cast<char>((componentType >> 16) & 0xFF),
+                static_cast<char>((componentType >> 8) & 0xFF),
+                static_cast<char>(componentType & 0xFF)
+            };
+            
+            juceFilter->auComponentType = componentTypeStr;
+        }
 
+        inParameterChangedCallback = false;
+                
        #ifdef JucePlugin_PreferredChannelConfigurations
         short configs[][2] = {JucePlugin_PreferredChannelConfigurations};
         const int numConfigs = sizeof (configs) / sizeof (short[2]);
@@ -355,6 +372,19 @@ public:
 
     UInt32 SupportedNumChannels (const AUChannelInfo** outInfo) override
     {
+        const auto isMusicDevice = GetComponentDescription().componentType == kAudioUnitType_MusicDevice;
+
+        if (isMusicDevice)
+        {
+            // See https://github.com/juce-framework/JUCE/issues/1508
+            // We only do this for the aumu (music device) case.
+            // The aumf (music effect) needs an actual implementation, or, in auval terminology,
+            // provide an "explicit" layout.
+            // I suspect we could alternatively pass different bus counts into the MusicDeviceBase
+            // constructor, but implementing SupportedNumChannels a bit differently is easier.
+            return 0;
+        }
+
         if (outInfo != nullptr)
             *outInfo = channelInfo.getRawDataPointer();
 
@@ -918,6 +948,7 @@ public:
         return sizeInBytes;
     }
 
+    /* Removed by Izmar. See https://github.com/juce-framework/JUCE/issues/1508
     std::vector<AudioChannelLayoutTag> GetChannelLayoutTags (AudioUnitScope inScope, AudioUnitElement inElement) override
     {
         const auto info = getElementInfo (inScope, inElement);
@@ -930,6 +961,7 @@ public:
 
         return getSupportedBusLayouts (info.isInput, info.busNr);
     }
+    */
 
     OSStatus SetAudioChannelLayout (AudioUnitScope scope, AudioUnitElement element, const AudioChannelLayout* inLayout) override
     {

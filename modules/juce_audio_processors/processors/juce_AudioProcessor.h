@@ -73,6 +73,8 @@ protected:
     }
 
 public:
+    std::string auComponentType;
+
     //==============================================================================
     enum ProcessingPrecision
     {

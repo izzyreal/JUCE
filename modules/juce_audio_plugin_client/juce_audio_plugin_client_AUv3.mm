@@ -120,6 +120,14 @@ public:
         JUCE_END_IGNORE_WARNINGS_GCC_LIKE
           processorHolder (processor)
     {
+        const OSType componentType = descr.componentType;
+        const std::string componentTypeStr {
+            static_cast<char>((componentType >> 24) & 0xFF),
+            static_cast<char>((componentType >> 16) & 0xFF),
+            static_cast<char>((componentType >> 8) & 0xFF),
+            static_cast<char>(componentType & 0xFF)
+        };
+        processor->get()->auComponentType = componentTypeStr;
         init();
     }
 
@@ -128,7 +136,6 @@ public:
           processorHolder (new AudioProcessorHolder (createPluginFilterOfType (AudioProcessor::wrapperType_AudioUnitv3)))
     {
         jassert (MessageManager::getInstance()->isThisTheMessageThread());
-        initialiseJuce_GUI();
 
         init();
     }
@@ -834,7 +841,46 @@ private:
             //==============================================================================
             addMethod (@selector (inputBusses),                             [] (id self, SEL)                                                   { return _this (self)->getInputBusses(); });
             addMethod (@selector (outputBusses),                            [] (id self, SEL)                                                   { return _this (self)->getOutputBusses(); });
-            addMethod (@selector (channelCapabilities),                     [] (id self, SEL)                                                   { return _this (self)->getChannelCapabilities(); });
+            addMethod (@selector (channelCapabilities),
+                                                                            [] (id self, SEL)
+                       {
+                /*
+                 * This implementation has been modified by Izmar. It yields the AUv3 equivalent of
+                 https://github.com/izzyreal/juce-vmpc-patches/blob/main/auv2_aumu_default_bus_layout_in_order_to_support_mixed_mono_and_stereo_outputs.patch
+                 * Also see https://github.com/juce-framework/JUCE/issues/1508
+                 *
+                 * To summarize, when VMPC2000XL runs as a music device (instrument), we don't explicitly publish
+                 * supported channel capabilities, which is accomplished by returning `AUAudioUnit`'s default
+                 * implementation.
+                 *
+                 * This results in auval reporting there's only a default implicit layout, and that happens to be
+                 * one that we're very interested in: 1x stereo in, 5x stereo out, and 8x mono out. Logic correctly
+                 * picks up on this layout, and also adds a 1x stereo in, 1x stereo out layout, which is also a good
+                 * option to have as a user.
+                 *
+                 * If we don't return the default implementation for instruments, Logic is not able to detect and
+                 * expose an instrument with a mix of stereo and mono buses. It even starts reporting an unsupported
+                 * and rather strange layout: 13x stereo out, which is far over the 18 mono channels that the
+                 * plugin's buses amount to.
+                 *
+                 * Moreover, we leave the effect implementation as is, because auval starts failing if no explicit
+                 * layouts are provided for effects with 1x stereo in, 5x stereo out and 8x mono out buses. The
+                 * default JUCE implementation of returning `_this(self)->getChannelCapabilities()` happens to
+                 * accomplish a sane layout for effects, even if we advertise so many buses: 1x stereo in, 1x stereo
+                 * out.
+                 */
+                const OSType componentType = [self componentDescription].componentType;
+                const bool isMusicDevice = (componentType == kAudioUnitType_MusicDevice);
+
+                if (isMusicDevice)
+                {
+                    using SuperMethod = NSArray<NSNumber*>* (*)(id, SEL);
+                    SuperMethod superMethod = (SuperMethod) class_getMethodImplementation([AUAudioUnit class], @selector(channelCapabilities));
+                    return superMethod(self, @selector(channelCapabilities));
+                }
+
+                return _this(self)->getChannelCapabilities();
+            });
             addMethod (@selector (shouldChangeToFormat:forBus:),            [] (id self, SEL, AVAudioFormat* format, AUAudioUnitBus* bus)       { return _this (self)->shouldChangeToFormat (format, bus) ? YES : NO; });
 
             //==============================================================================
@@ -1728,6 +1774,7 @@ private:
 
     using ObserverPtr = std::unique_ptr<std::remove_pointer_t<AUParameterObserverToken>, ObserverDestructor>;
 
+    ScopedJuceInitialiser_GUI guiScope;
     AUAudioUnit* au;
     AudioProcessorHolder::Ptr processorHolder;
 
@@ -1799,7 +1846,6 @@ public:
     JuceAUViewController (AUViewController<AUAudioUnitFactory>* p)
         : myself (p)
     {
-        initialiseJuce_GUI();
     }
 
     ~JuceAUViewController()
@@ -1829,16 +1875,10 @@ public:
                     JUCE_IOS_MAC_VIEW* view = [[[JUCE_IOS_MAC_VIEW alloc] initWithFrame: convertToCGRect (editor->getBounds())] autorelease];
                     [myself setView: view];
 
-                   #if JUCE_IOS
                     editor->setVisible (false);
-                   #else
-                    editor->setVisible (true);
-                   #endif
-
-                    detail::PluginUtilities::addToDesktop (*editor, view);
 
                    #if JUCE_IOS
-                    if (JUCE_IOS_MAC_VIEW* peerView = [[[myself view] subviews] objectAtIndex: 0])
+                    if (auto* peerView = getPeerView())
                         [peerView setContentMode: UIViewContentModeTop];
 
                     if (auto* peer = dynamic_cast<UIViewPeerControllerReceiver*> (editor->getPeer()))
@@ -1862,16 +1902,21 @@ public:
 
                     editor->setBounds (convertToRectInt ([[myself view] bounds]));
 
-                    if (JUCE_IOS_MAC_VIEW* peerView = [[[myself view] subviews] objectAtIndex: 0])
-                    {
-                       #if JUCE_IOS
-                        [peerView setNeedsDisplay];
-                       #else
-                        [peerView setNeedsDisplay: YES];
-                       #endif
-                    }
+                    repaintView();
                 }
             }
+        }
+    }
+
+    void repaintView()
+    {
+        if (auto* peerView = getPeerView())
+        {
+           #if JUCE_IOS
+            [peerView setNeedsDisplay];
+           #else
+            [peerView setNeedsDisplay: YES];
+           #endif
         }
     }
 
@@ -1882,18 +1927,35 @@ public:
                 processor->memoryWarningReceived();
     }
 
-    void viewDidAppear (bool)
+    void viewWillDisappear()
     {
-        if (processorHolder.get() != nullptr)
-            if (AudioProcessorEditor* editor = getAudioProcessor().getActiveEditor())
-                editor->setVisible (true);
+        if (processorHolder.get() == nullptr)
+            return;
+
+        if (auto* editor = getAudioProcessor().getActiveEditor())
+            editor->removeFromDesktop();
     }
 
-    void viewDidDisappear (bool)
+    void viewDidAppear()
     {
-        if (processorHolder.get() != nullptr)
-            if (AudioProcessorEditor* editor = getAudioProcessor().getActiveEditor())
-                editor->setVisible (false);
+        if (processorHolder.get() == nullptr)
+            return;
+
+        if (auto* editor = getAudioProcessor().getActiveEditor())
+        {
+            editor->setVisible (true);
+            detail::PluginUtilities::addToDesktop (*editor, [myself view]);
+            editor->setBounds (convertToRectInt ([[myself view] bounds]));
+        }
+    }
+
+    void viewDidDisappear()
+    {
+        if (processorHolder.get() == nullptr)
+            return;
+
+        if (auto* editor = getAudioProcessor().getActiveEditor())
+            editor->setVisible (false);
     }
 
     CGSize getPreferredContentSize() const
@@ -1921,6 +1983,15 @@ public:
     }
 
 private:
+    JUCE_IOS_MAC_VIEW* getPeerView() const
+    {
+        if (auto* editor = getAudioProcessor().getActiveEditor())
+            if (auto* peer = editor->getPeer())
+                return static_cast<JUCE_IOS_MAC_VIEW*> (peer->getNativeHandle());
+
+        return nullptr;
+    }
+
     template <typename Callback>
     static void waitForExecutionOnMainThread (Callback&& callback)
     {
@@ -1965,6 +2036,7 @@ private:
     };
 
     //==============================================================================
+    ScopedJuceInitialiser_GUI guiScope;
     AUViewController<AUAudioUnitFactory>* myself;
     LockedProcessorHolder processorHolder;
     Rectangle<int> preferredSize { 1, 1 };
@@ -1994,8 +2066,13 @@ private:
 
 - (void) didReceiveMemoryWarning { cpp->didReceiveMemoryWarning(); }
 #if JUCE_IOS
-- (void) viewDidAppear: (BOOL) animated { cpp->viewDidAppear (animated); [super viewDidAppear:animated]; }
-- (void) viewDidDisappear: (BOOL) animated { cpp->viewDidDisappear (animated); [super viewDidDisappear:animated]; }
+- (void) viewDidAppear:     (BOOL) animated { cpp->viewDidAppear();     [super viewDidAppear:animated]; }
+- (void) viewDidDisappear:  (BOOL) animated { cpp->viewDidDisappear();  [super viewDidDisappear:animated]; }
+- (void) viewWillDisappear: (BOOL) animated { cpp->viewWillDisappear(); [super viewWillDisappear:animated]; }
+#else
+- (void) viewDidAppear     { cpp->viewDidAppear();     [super viewDidAppear]; }
+- (void) viewDidDisappear  { cpp->viewDidDisappear();  [super viewDidDisappear]; }
+- (void) viewWillDisappear { cpp->viewWillDisappear(); [super viewWillDisappear]; }
 #endif
 @end
 
