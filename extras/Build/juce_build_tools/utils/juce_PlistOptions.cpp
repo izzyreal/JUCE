@@ -292,45 +292,44 @@ namespace juce::build_tools
         plistKey.addTextElement ("AudioComponents");
 
         XmlElement plistEntry ("array");
-        auto* dict = plistEntry.createNewChildElement ("dict");
 
-        auto truncatedCode = pluginManufacturerCode.substring (0, 4);
-        auto pluginSubType = pluginCode.substring (0, 4);
+        const std::vector<juce::String> auTypes { "aumu", "aumf" };
+        const std::vector<juce::String> subTypes { "2kXa", "2kXL" };
 
-        if (truncatedCode.toLowerCase() == truncatedCode)
+        for (int i = 0; i < auTypes.size(); i++)
         {
-            throw SaveError ("AudioUnit plugin code identifiers invalid!\n\n"
-                             "You have used only lower case letters in your AU plugin manufacturer identifier. "
-                             "You must have at least one uppercase letter in your AU plugin manufacturer "
-                             "identifier code.");
-        }
+            const auto auType = auTypes[i];
+            const auto subType = subTypes[i];
 
-        addPlistDictionaryKey (*dict, "name", pluginManufacturer + ": " + pluginName);
-        addPlistDictionaryKey (*dict, "description", pluginDescription);
-        addPlistDictionaryKey (*dict, "factoryFunction", pluginAUExportPrefix + "Factory");
-        addPlistDictionaryKey (*dict, "manufacturer", truncatedCode);
-        addPlistDictionaryKey (*dict, "type", auMainType.removeCharacters ("'"));
-        addPlistDictionaryKey (*dict, "subtype", pluginSubType);
-        addPlistDictionaryKey (*dict, "version", getAUVersionAsHexInteger (*this));
+            auto* dict = plistEntry.createNewChildElement ("dict");
 
-        if (isAuSandboxSafe)
-        {
-            addPlistDictionaryKey (*dict, "sandboxSafe", true);
-        }
-        else if (! suppressResourceUsage)
-        {
-            dict->createNewChildElement ("key")->addTextElement ("resourceUsage");
-            auto* resourceUsageDict = dict->createNewChildElement ("dict");
+            addPlistDictionaryKey (*dict, "name", "Izmar: VMPC2000XL AUv2");
+            addPlistDictionaryKey (*dict, "description", pluginDescription);
+            addPlistDictionaryKey (*dict, "factoryFunction", pluginAUExportPrefix + "Factory");
+            addPlistDictionaryKey (*dict, "manufacturer", "Izmr");
+            addPlistDictionaryKey (*dict, "type", auType); 
+            addPlistDictionaryKey (*dict, "subtype", subType);
+            addPlistDictionaryKey (*dict, "version", getAUVersionAsHexInteger (*this));
 
-            addPlistDictionaryKey (*resourceUsageDict, "network.client", true);
-            addPlistDictionaryKey (*resourceUsageDict, "temporary-exception.files.all.read-write", true);
-        }
+            if (isAuSandboxSafe)
+            {
+                addPlistDictionaryKey (*dict, "sandboxSafe", true);
+            }
+            else if (! suppressResourceUsage)
+            {
+                dict->createNewChildElement ("key")->addTextElement ("resourceUsage");
+                auto* resourceUsageDict = dict->createNewChildElement ("dict");
 
-        if (isPluginARAEffect)
-        {
-            dict->createNewChildElement ("key")->addTextElement ("tags");
-            auto* tagsArray = dict->createNewChildElement ("array");
-            tagsArray->createNewChildElement ("string")->addTextElement ("ARA");
+                addPlistDictionaryKey (*resourceUsageDict, "network.client", true);
+                addPlistDictionaryKey (*resourceUsageDict, "temporary-exception.files.all.read-write", true);
+            }
+
+            if (isPluginARAEffect)
+            {
+                dict->createNewChildElement ("key")->addTextElement ("tags");
+                auto* tagsArray = dict->createNewChildElement ("array");
+                tagsArray->createNewChildElement ("string")->addTextElement ("ARA");
+            }
         }
 
         return { plistKey, plistEntry };
@@ -347,29 +346,36 @@ namespace juce::build_tools
         addPlistDictionaryKey (plistEntry, "NSExtensionPointIdentifier", "com.apple.AudioUnit-UI");
         plistEntry.createNewChildElement ("key")->addTextElement ("NSExtensionAttributes");
 
+        const std::vector<juce::String> auTypes { "aumu", "aumf" };
+        const std::vector<juce::String> subTypes { "2kXa", "2kXL" };
         auto* dict = plistEntry.createNewChildElement ("dict");
+
         dict->createNewChildElement ("key")->addTextElement ("AudioComponents");
         auto* componentArray = dict->createNewChildElement ("array");
 
-        auto* componentDict = componentArray->createNewChildElement ("dict");
 
-        addPlistDictionaryKey (*componentDict, "name", pluginManufacturer + ": " + pluginName);
-        addPlistDictionaryKey (*componentDict, "description", pluginDescription);
-        addPlistDictionaryKey (*componentDict, "factoryFunction", pluginAUExportPrefix + "FactoryAUv3");
-        addPlistDictionaryKey (*componentDict, "manufacturer", pluginManufacturerCode.substring (0, 4));
-        addPlistDictionaryKey (*componentDict, "type", auMainType.removeCharacters ("'"));
-        addPlistDictionaryKey (*componentDict, "subtype", pluginCode.substring (0, 4));
-        addPlistDictionaryKey (*componentDict, "version", getAUVersionAsHexInteger (*this));
-        addPlistDictionaryKey (*componentDict, "sandboxSafe", true);
+        for (int i = 0; i < auTypes.size(); i++)
+        {
+            const auto auType = auTypes[i];
+            const auto subType = subTypes[i];
 
-        componentDict->createNewChildElement ("key")->addTextElement ("tags");
-        auto* tagsArray = componentDict->createNewChildElement ("array");
+            auto* componentDict = componentArray->createNewChildElement ("dict");
 
-        tagsArray->createNewChildElement ("string")
-                 ->addTextElement (isPluginSynth ? "Synth" : "Effects");
+            addPlistDictionaryKey (*componentDict, "name", "Izmar: VMPC2000XL AUv3");
+            addPlistDictionaryKey (*componentDict, "description", pluginDescription);
+            addPlistDictionaryKey (*componentDict, "factoryFunction", pluginAUExportPrefix + "FactoryAUv3");
+            addPlistDictionaryKey (*componentDict, "manufacturer", "Izmr");
+            addPlistDictionaryKey (*componentDict, "type", auType);
+            addPlistDictionaryKey (*componentDict, "subtype", subType);
+            addPlistDictionaryKey (*componentDict, "version", getAUVersionAsHexInteger (*this));
+            addPlistDictionaryKey (*componentDict, "sandboxSafe", true);
 
-        if (auMainType.removeCharacters ("'") == "aumi")
-            tagsArray->createNewChildElement ("string")->addTextElement ("MIDI");
+            componentDict->createNewChildElement ("key")->addTextElement ("tags");
+            auto* tagsArray = componentDict->createNewChildElement ("array");
+
+            tagsArray->createNewChildElement ("string")
+                     ->addTextElement ("Sampler");
+        }
 
         return { plistKey, plistEntry };
     }
