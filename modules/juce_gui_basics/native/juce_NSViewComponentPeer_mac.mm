@@ -2189,7 +2189,10 @@ struct JuceNSViewClass final : public NSViewComponentPeerWrapper<ObjCClass<NSVie
             const auto handled = [&]
             {
                 if (auto* owner = getOwner (self))
-                    return owner->sendEventToInputContextOrComponent (ev);
+                {
+                    owner->handleRawKeyEvent(RawKeyEvent{[ev keyCode], true});
+                    return owner->sendEventToInputContextOrComponent(ev);
+                }
 
                 return false;
             }();
@@ -2201,7 +2204,7 @@ struct JuceNSViewClass final : public NSViewComponentPeerWrapper<ObjCClass<NSVie
         addMethod (@selector (keyUp:), [] (id self, SEL, NSEvent* ev)
         {
             auto* owner = getOwner (self);
-
+            owner->handleRawKeyEvent(RawKeyEvent{[ev keyCode], false});
             if (! owner->redirectKeyUp (ev))
                 sendSuperclassMessage<void> (self, @selector (keyUp:), ev);
         });
