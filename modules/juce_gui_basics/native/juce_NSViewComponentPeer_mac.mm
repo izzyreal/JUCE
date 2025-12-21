@@ -325,6 +325,41 @@ public:
         [view release];
     }
 
+    void synthesizeAndEmitModKeyEvents(NSEventModifierFlags modFlags)
+    {
+        struct ModMap
+        {
+            NSEventModifierFlags flag;
+            int keyCode;
+        };
+
+        static constexpr ModMap mods[] =
+            {
+                { NSEventModifierFlagShift,   0x38 }, // left/right both collapse
+                { NSEventModifierFlagControl, 0x3B },
+                { NSEventModifierFlagOption,  0x3A },
+                { NSEventModifierFlagCommand, 0x37 },
+                { NSEventModifierFlagCapsLock,0x39 },
+                { NSEventModifierFlagFunction,0x3F }
+            };
+
+        auto changed = modFlags ^ prevModFlags;
+
+        if (changed != 0)
+        {
+            for (auto &m : mods)
+            {
+                if (changed & m.flag)
+                {
+                    bool isDown = (modFlags & m.flag) != 0;
+                    handleRawKeyEvent(RawKeyEvent{m.keyCode, isDown});
+                }
+            }
+
+            prevModFlags = modFlags;
+        }
+    };
+
     //==============================================================================
     void* getNativeHandle() const override    { return view; }
 
@@ -841,6 +876,7 @@ public:
 
     void sendMouseEvent (NSEvent* ev)
     {
+        synthesizeAndEmitModKeyEvents([ev modifierFlags]);
         updateModifiers (ev);
         handleMouseEvent (MouseInputSource::InputSourceType::mouse, getMousePos (ev, view), ModifierKeys::currentModifiers,
                           getMousePressure (ev), MouseInputSource::defaultOrientation, getMouseTime (ev));
@@ -2002,6 +2038,8 @@ private:
     std::vector<ScopedNotificationCenterObserver> scopedObservers;
     std::vector<ScopedNotificationCenterObserver> windowObservers;
 
+    NSEventModifierFlags prevModFlags;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NSViewComponentPeer)
 };
 
@@ -2190,6 +2228,7 @@ struct JuceNSViewClass final : public NSViewComponentPeerWrapper<ObjCClass<NSVie
             {
                 if (auto* owner = getOwner (self))
                 {
+                    owner->synthesizeAndEmitModKeyEvents([ev modifierFlags]);
                     owner->handleRawKeyEvent(RawKeyEvent{[ev keyCode], true});
                     return owner->sendEventToInputContextOrComponent(ev);
                 }
@@ -2204,6 +2243,7 @@ struct JuceNSViewClass final : public NSViewComponentPeerWrapper<ObjCClass<NSVie
         addMethod (@selector (keyUp:), [] (id self, SEL, NSEvent* ev)
         {
             auto* owner = getOwner (self);
+            owner->synthesizeAndEmitModKeyEvents([ev modifierFlags]);
             owner->handleRawKeyEvent(RawKeyEvent{[ev keyCode], false});
             if (! owner->redirectKeyUp (ev))
                 sendSuperclassMessage<void> (self, @selector (keyUp:), ev);
