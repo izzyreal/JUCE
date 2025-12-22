@@ -611,4 +611,36 @@ void ComponentPeer::globalFocusChanged ([[maybe_unused]] Component* comp)
     refreshTextInputTarget();
 }
 
+template<class ComponentClass>
+static ComponentClass* findChildComponentOfClass(Component* parent)
+{
+    for (int i = 0; i < parent->getNumChildComponents(); ++i)
+    {
+        auto* childComp = parent->getChildComponent(i);
+
+        if (auto c = dynamic_cast<ComponentClass*> (childComp))
+            return c;
+
+        if (auto c = findChildComponentOfClass<ComponentClass> (childComp))
+            return c;
+    }
+
+    return nullptr;
+}
+
+void ComponentPeer::handleRawKeyEvent (const RawKeyEvent& keyEvent)
+{
+    auto rawKeyEventSink = component.findParentComponentOfClass<RawKeyEventSink>();
+
+    if (rawKeyEventSink == nullptr)
+    {
+        rawKeyEventSink = findChildComponentOfClass<RawKeyEventSink>(&component);
+    }
+
+    if (rawKeyEventSink != nullptr)
+    {
+        rawKeyEventSink->handleRawKeyEvent(keyEvent);
+    }
+}
+
 } // namespace juce

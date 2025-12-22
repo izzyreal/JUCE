@@ -347,6 +347,8 @@ public:
 
     Component* getLastFocusedSubcomponent() const noexcept;
 
+    void handleRawKeyEvent (const RawKeyEvent& keyEvent);
+
     /** Called when a key is pressed.
         For keycode info, see the KeyPress class.
         Returns true if the keystroke was used.
