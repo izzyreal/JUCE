@@ -25,6 +25,10 @@
 
 #pragma once
 
+#if JUCE_WINDOWS && defined(small)
+#undef small
+#endif
+
 namespace juce
 {
 
