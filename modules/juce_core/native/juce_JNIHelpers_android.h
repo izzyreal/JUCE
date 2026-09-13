@@ -631,6 +631,7 @@ DECLARE_JNI_CLASS (AndroidUri, "android/net/Uri")
  METHOD (setVisibility,             "setVisibility",             "(I)V") \
  METHOD (setLayoutParams,           "setLayoutParams",           "(Landroid/view/ViewGroup$LayoutParams;)V") \
  METHOD (setSystemUiVisibility,     "setSystemUiVisibility",     "(I)V") \
+ METHOD (getSystemUiVisibility,     "getSystemUiVisibility",     "()I") \
  METHOD (findViewById,              "findViewById",              "(I)Landroid/view/View;") \
  METHOD (getRootView,               "getRootView",               "()Landroid/view/View;") \
  METHOD (addOnLayoutChangeListener, "addOnLayoutChangeListener", "(Landroid/view/View$OnLayoutChangeListener;)V") \

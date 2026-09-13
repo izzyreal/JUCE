@@ -23,6 +23,12 @@
   ==============================================================================
 */
 
+#if JUCE_USE_XINPUT
+ // Also required when this native header is included directly by a module.
+ // If you're missing this header, install the libxi-dev package.
+ #include <X11/extensions/XInput2.h>
+#endif
+
 namespace juce
 {
 
@@ -172,7 +178,7 @@ class XWindowSystem  : public DeletedAtShutdown
 {
 public:
     //==============================================================================
-    ::Window createWindow (::Window parentWindow, LinuxComponentPeer*) const;
+    ::Window createWindow (::Window parentWindow, LinuxComponentPeer*);
     void destroyWindow    (::Window);
 
     void setTitle (::Window, const String&) const;
@@ -200,6 +206,7 @@ public:
 
     bool canUseSemiTransparentWindows() const;
     bool canUseARGBImages() const;
+    bool canUseMultiTouch() const;
     bool isDarkModeActive() const;
 
     int getNumPaintsPendingForWindow (::Window);
@@ -306,10 +313,13 @@ private:
     //==============================================================================
     void handleKeyPressEvent        (LinuxComponentPeer*, XKeyEvent&) const;
     void handleKeyReleaseEvent      (LinuxComponentPeer*, const XKeyEvent&) const;
-    void handleWheelEvent           (LinuxComponentPeer*, const XButtonPressedEvent&, float) const;
-    void handleButtonPressEvent     (LinuxComponentPeer*, const XButtonPressedEvent&, int) const;
+    void handleWheelEvent           (LinuxComponentPeer*, int64, Point<float>, float) const;
+    void handleButtonPressEvent     (LinuxComponentPeer*, int64, Point<float>, int) const;
+    void handleButtonPressEvent     (LinuxComponentPeer*, int, int, ::Time, Point<double>) const;
     void handleButtonPressEvent     (LinuxComponentPeer*, const XButtonPressedEvent&) const;
+    void handleButtonReleaseEvent   (LinuxComponentPeer*, int, int, ::Time, Point<double>) const;
     void handleButtonReleaseEvent   (LinuxComponentPeer*, const XButtonReleasedEvent&) const;
+    void handleMotionNotifyEvent    (LinuxComponentPeer*, int, ::Time, Point<double>) const;
     void handleMotionNotifyEvent    (LinuxComponentPeer*, const XPointerMovedEvent&) const;
     void handleEnterNotifyEvent     (LinuxComponentPeer*, const XEnterWindowEvent&) const;
     void handleLeaveNotifyEvent     (LinuxComponentPeer*, const XLeaveWindowEvent&) const;
@@ -323,6 +333,12 @@ private:
     void handleClientMessageEvent   (LinuxComponentPeer*, XClientMessageEvent&, XEvent&) const;
     void handleXEmbedMessage        (LinuxComponentPeer*, XClientMessageEvent&) const;
 
+   #if JUCE_USE_XINPUT
+    bool handleXInputEvent (XEvent&) const;
+    void handleXIDeviceEvent        (LinuxComponentPeer*, int, XIDeviceEvent&) const;
+    void updateXInputDevices        () const;
+   #endif
+
     void dismissBlockingModals      (LinuxComponentPeer*) const;
     void dismissBlockingModals      (LinuxComponentPeer*, const XConfigureEvent&) const;
     void updateConstraints          (::Window, ComponentPeer&) const;
@@ -331,8 +347,14 @@ private:
 
     static void windowMessageReceive (XEvent&);
 
+   #if JUCE_UNIT_TESTS
+    friend struct LinuxTouchTestAccess;
+   #endif
+
     //==============================================================================
     bool xIsAvailable = false;
+
+    std::vector<::Window> windowHandles;
 
     XWindowSystemUtilities::Atoms atoms;
     ::Display* display = nullptr;

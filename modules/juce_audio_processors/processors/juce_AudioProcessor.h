@@ -73,6 +73,8 @@ protected:
     }
 
 public:
+    std::function<std::string()> auComponentType = []{ return ""; };
+
     //==============================================================================
     enum ProcessingPrecision
     {

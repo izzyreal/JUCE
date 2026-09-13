@@ -944,6 +944,17 @@ DECLARE_JNI_CLASS_WITH_MIN_SDK (AndroidWindowManagerLayoutParams28, "android/vie
 #undef JNI_CLASS_MEMBERS
 
 #define JNI_CLASS_MEMBERS(METHOD, STATICMETHOD, FIELD, STATICFIELD, CALLBACK) \
+ METHOD (getSystemWindowInsetTop,    "getSystemWindowInsetTop",     "()I") \
+ METHOD (getSystemWindowInsetBottom, "getSystemWindowInsetBottom",  "()I") \
+ METHOD (getSystemWindowInsetLeft,   "getSystemWindowInsetLeft",    "()I") \
+ METHOD (getSystemWindowInsetRight,  "getSystemWindowInsetRight",   "()I") \
+ METHOD (getStableInsetBottom,       "getStableInsetBottom",        "()I") \
+ METHOD (consumeSystemWindowInsets,  "consumeSystemWindowInsets",   "()Landroid/view/WindowInsets;")
+
+DECLARE_JNI_CLASS (AndroidWindowInsets, "android/view/WindowInsets")
+#undef JNI_CLASS_MEMBERS
+
+#define JNI_CLASS_MEMBERS(METHOD, STATICMETHOD, FIELD, STATICFIELD, CALLBACK) \
  METHOD (getDisplayCutout, "getDisplayCutout", "()Landroid/view/DisplayCutout;") \
  METHOD (consumeDisplayCutout, "consumeDisplayCutout", "()Landroid/view/WindowInsets;")
 
@@ -977,7 +988,8 @@ DECLARE_JNI_CLASS_WITH_MIN_SDK (AndroidWindowManagerLayoutParams28, "android/vie
 
 #define JNI_CLASS_MEMBERS(METHOD, STATICMETHOD, FIELD, STATICFIELD, CALLBACK) \
  STATICMETHOD (ime, "ime", "()I") \
- STATICMETHOD (displayCutout, "displayCutout", "()I")
+ STATICMETHOD (displayCutout, "displayCutout", "()I") \
+ STATICMETHOD (systemBars, "systemBars", "()I")
 
  DECLARE_JNI_CLASS_WITH_MIN_SDK (AndroidWindowInsetsType, "android/view/WindowInsets$Type", 30)
 #undef JNI_CLASS_MEMBERS
@@ -1009,6 +1021,12 @@ namespace
 }
 
 //==============================================================================
+static BorderSize<int> computeLogicalBorderSize (BorderSize<int> b, double displayScale)
+{
+    const auto getInset = [&] (int physicalSize) { return roundToInt (physicalSize / displayScale); };
+    return { getInset (b.getTop()), getInset (b.getLeft()), getInset (b.getBottom()), getInset (b.getRight()) };
+}
+
 static bool supportsDisplayCutout()
 {
     return getAndroidSDKVersion() >= 28;
@@ -1021,15 +1039,13 @@ static BorderSize<int> androidDisplayCutoutToBorderSize (LocalRef<jobject> displ
 
     auto* env = getEnv();
 
-    const auto getInset = [&] (jmethodID methodID)
-    {
-        return roundToInt (env->CallIntMethod (displayCutout, methodID) / displayScale);
-    };
+    const auto getInset = [&] (jmethodID methodID) { return env->CallIntMethod (displayCutout, methodID); };
 
-    return { getInset (AndroidDisplayCutout.getSafeInsetTop),
-             getInset (AndroidDisplayCutout.getSafeInsetLeft),
-             getInset (AndroidDisplayCutout.getSafeInsetBottom),
-             getInset (AndroidDisplayCutout.getSafeInsetRight) };
+    return computeLogicalBorderSize ({ getInset (AndroidDisplayCutout.getSafeInsetTop),
+                                       getInset (AndroidDisplayCutout.getSafeInsetLeft),
+                                       getInset (AndroidDisplayCutout.getSafeInsetBottom),
+                                       getInset (AndroidDisplayCutout.getSafeInsetRight) },
+                                     displayScale);
 }
 
 static BorderSize<int> androidInsetsToBorderSize (LocalRef<jobject> insets, double displayScale)
@@ -1039,15 +1055,13 @@ static BorderSize<int> androidInsetsToBorderSize (LocalRef<jobject> insets, doub
 
     auto* env = getEnv();
 
-    const auto getInset = [&] (jfieldID fieldID)
-    {
-        return roundToInt (env->GetIntField (insets, fieldID) / displayScale);
-    };
+    const auto getInset = [&] (jfieldID fieldID) { return env->GetIntField (insets, fieldID); };
 
-    return { getInset (AndroidGraphicsInsets.top),
-             getInset (AndroidGraphicsInsets.left),
-             getInset (AndroidGraphicsInsets.bottom),
-             getInset (AndroidGraphicsInsets.right) };
+    return computeLogicalBorderSize ({ getInset (AndroidGraphicsInsets.top),
+                                       getInset (AndroidGraphicsInsets.left),
+                                       getInset (AndroidGraphicsInsets.bottom),
+                                       getInset (AndroidGraphicsInsets.right) },
+                                     displayScale);
 }
 
 class JuceInsets
@@ -1064,20 +1078,49 @@ public:
     auto tie() const { return std::tie (displayCutout, keyboard); }
 };
 
-static JuceInsets getInsetsFromAndroidWindowInsets (LocalRef<jobject> windowInsets, double scale)
+static JuceInsets getInsetsFromAndroidWindowInsets (LocalRef<jobject> windowInsets, jint visibility, double scale)
 {
     auto* env = getEnv();
 
     if (windowInsets == nullptr)
         return {};
 
-    const auto displayCutout = [&]() -> BorderSize<int>
+    const auto systemAreas = [&]() -> BorderSize<int>
     {
+        if (AndroidWindowInsets30.getInsets != nullptr)
+        {
+            const auto bars = env->CallStaticIntMethod (AndroidWindowInsetsType, AndroidWindowInsetsType.systemBars);
+            const auto cutout = env->CallStaticIntMethod (AndroidWindowInsetsType, AndroidWindowInsetsType.displayCutout);
+            const jint mask = cutout | bars;
+            const LocalRef<jobject> insets { env->CallObjectMethod (windowInsets, AndroidWindowInsets30.getInsets, mask) };
+            return androidInsetsToBorderSize (insets, scale);
+        }
+
+        const auto currentTop    = env->CallIntMethod (windowInsets, AndroidWindowInsets.getSystemWindowInsetTop);
+        const auto currentLeft   = env->CallIntMethod (windowInsets, AndroidWindowInsets.getSystemWindowInsetLeft);
+        const auto currentBottom = env->CallIntMethod (windowInsets, AndroidWindowInsets.getSystemWindowInsetBottom);
+        const auto currentRight  = env->CallIntMethod (windowInsets, AndroidWindowInsets.getSystemWindowInsetRight);
+        const auto stableBottom  = env->CallIntMethod (windowInsets, AndroidWindowInsets.getStableInsetBottom);
+
+        const auto hasStatus = (visibility & SYSTEM_UI_FLAG_FULLSCREEN) == 0;
+        const auto hasNav = (visibility & SYSTEM_UI_FLAG_HIDE_NAVIGATION) == 0;
+        const auto bottomInset = currentBottom > stableBottom || hasNav ? currentBottom : 0;
+
+        const auto baseBorder = computeLogicalBorderSize ({ hasStatus ? currentTop : 0,
+                                                            hasNav ? currentLeft : 0,
+                                                            bottomInset,
+                                                            hasNav ? currentRight : 0 },
+                                                          scale);
+
         if (AndroidWindowInsets28.getDisplayCutout == nullptr)
-            return {};
+            return baseBorder;
 
         const LocalRef<jobject> insets { env->CallObjectMethod (windowInsets, AndroidWindowInsets28.getDisplayCutout) };
-        return androidDisplayCutoutToBorderSize (insets, scale);
+        const auto cutouts = androidDisplayCutoutToBorderSize (insets, scale);
+        return { jmax (baseBorder.getTop(), cutouts.getTop()),
+                 jmax (baseBorder.getLeft(), cutouts.getLeft()),
+                 jmax (baseBorder.getBottom(), cutouts.getBottom()),
+                 jmax (baseBorder.getRight(), cutouts.getRight()) };
     }();
 
     const auto keyboard = [&]() -> BorderSize<int>
@@ -1085,12 +1128,19 @@ static JuceInsets getInsetsFromAndroidWindowInsets (LocalRef<jobject> windowInse
         if (AndroidWindowInsetsType.ime == nullptr || AndroidWindowInsets30.getInsets == nullptr)
             return {};
 
-        const auto mask = env->CallStaticIntMethod (AndroidWindowInsetsType, AndroidWindowInsetsType.ime);
+        const auto ime = env->CallStaticIntMethod (AndroidWindowInsetsType, AndroidWindowInsetsType.ime);
+        const auto bars = env->CallStaticIntMethod (AndroidWindowInsetsType, AndroidWindowInsetsType.systemBars);
+        const auto cutout = env->CallStaticIntMethod (AndroidWindowInsetsType, AndroidWindowInsetsType.displayCutout);
+        const jint mask = ime | cutout | bars;
         const LocalRef<jobject> insets { env->CallObjectMethod (windowInsets, AndroidWindowInsets30.getInsets, mask) };
-        return androidInsetsToBorderSize (insets, scale);
+        const auto unclamped = systemAreas.subtractedFrom (androidInsetsToBorderSize (insets, scale));
+        return { jmax (0, unclamped.getTop()),
+                 jmax (0, unclamped.getLeft()),
+                 jmax (0, unclamped.getBottom()),
+                 jmax (0, unclamped.getRight()) };
     }();
 
-    return { displayCutout, keyboard };
+    return { systemAreas, keyboard };
 }
 
 /* The usage of the KeyPress class relies on its keyCode member having the standard ASCII values
@@ -1305,11 +1355,19 @@ public:
             env->CallVoidMethod (viewGroup.get(), AndroidViewManager.addView, view.get(), windowLayoutParams.get());
         }
 
-        if (supportsDisplayCutout())
+        if (const auto methodID = AndroidView23.setOnApplyWindowInsetsListener)
         {
-            if (const auto methodID = AndroidView23.setOnApplyWindowInsetsListener)
+            LocalRef<jobject> activity (getCurrentActivity());
+
+            if (activity == nullptr)
+                activity = getMainActivity();
+
+            if (activity != nullptr)
             {
-                env->CallVoidMethod (view,
+                LocalRef<jobject> window (env->CallObjectMethod (activity, AndroidActivity.getWindow));
+                LocalRef<jobject> decorView (env->CallObjectMethod (window, AndroidWindow.getDecorView));
+
+                env->CallVoidMethod (decorView,
                                      methodID,
                                      CreateJavaInterface (new ViewWindowInsetsListener,
                                                           "android/view/View$OnApplyWindowInsetsListener").get());
@@ -1325,6 +1383,21 @@ public:
         stopTimer();
 
         auto* env = getEnv();
+
+        if (const auto methodID = AndroidView23.setOnApplyWindowInsetsListener)
+        {
+            LocalRef<jobject> activity (getCurrentActivity());
+
+            if (activity == nullptr)
+                activity = getMainActivity();
+
+            if (activity != nullptr)
+            {
+                LocalRef<jobject> window (env->CallObjectMethod (activity, AndroidActivity.getWindow));
+                LocalRef<jobject> decorView (env->CallObjectMethod (window, AndroidWindow.getDecorView));
+                env->CallVoidMethod (decorView, methodID, (jobject) nullptr);
+            }
+        }
 
         env->CallVoidMethod (view, ComponentPeerView.clear);
         frontWindow = nullptr;
@@ -2077,12 +2150,13 @@ private:
     class ViewWindowInsetsListener final : public juce::AndroidInterfaceImplementer
     {
     public:
-        jobject onApplyWindowInsets (LocalRef<jobject>, LocalRef<jobject> insets)
+        jobject onApplyWindowInsets (LocalRef<jobject> windowView, LocalRef<jobject> insets)
         {
             auto* env = getEnv();
 
             const auto& mainDisplay = *Desktop::getInstance().getDisplays().getPrimaryDisplay();
-            const auto newInsets = getInsetsFromAndroidWindowInsets (insets, mainDisplay.scale);
+            const auto visibility = env->CallIntMethod (windowView, AndroidView.getSystemUiVisibility);
+            const auto newInsets = getInsetsFromAndroidWindowInsets (insets, visibility, mainDisplay.scale);
 
             if (newInsets.tie() != JuceInsets::tie (mainDisplay))
                 forceDisplayUpdate();
@@ -2090,7 +2164,12 @@ private:
             if (const auto fieldId = AndroidWindowInsets30.CONSUMED)
                 return env->GetStaticObjectField (AndroidWindowInsets30, fieldId);
 
-            return env->CallObjectMethod (insets, AndroidWindowInsets28.consumeDisplayCutout);
+            LocalRef<jobject> consumed { env->CallObjectMethod (insets, AndroidWindowInsets.consumeSystemWindowInsets) };
+
+            if (const auto methodID = AndroidWindowInsets28.consumeDisplayCutout)
+                return env->CallObjectMethod (consumed, methodID);
+
+            return consumed.release();
         }
 
     private:
@@ -2687,8 +2766,9 @@ void Displays::findDisplays (float masterScale)
 
             if (const auto getRootWindowInsetsMethodId = AndroidView23.getRootWindowInsets)
             {
-                LocalRef<jobject> insets (env->CallObjectMethod (contentView.get(), getRootWindowInsetsMethodId));
-                JuceInsets::tie (d) = getInsetsFromAndroidWindowInsets (insets, d.scale).tie();
+                LocalRef<jobject> insets (env->CallObjectMethod (decorView.get(), getRootWindowInsetsMethodId));
+                const auto visibility = env->CallIntMethod (decorView, AndroidView.getSystemUiVisibility);
+                JuceInsets::tie (d) = getInsetsFromAndroidWindowInsets (insets, visibility, d.scale).tie();
             }
 
             static bool hasAddedMainActivityListener = false;

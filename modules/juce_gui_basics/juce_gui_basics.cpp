@@ -128,7 +128,7 @@
 #include "detail/juce_TopLevelWindowManager.h"
 
 //==============================================================================
-#if JUCE_IOS || JUCE_WINDOWS
+#if JUCE_IOS || JUCE_WINDOWS || JUCE_LINUX || JUCE_BSD
  #include "native/juce_MultiTouchMapper.h"
 #endif
 
@@ -193,9 +193,11 @@
 
  #include "native/juce_ScopedWindowAssociation_linux.h"
  #include "native/juce_WindowUtils_linux.cpp"
+ #include "native/juce_XInput_linux.h"
  #include "native/juce_Windowing_linux.cpp"
  #include "native/juce_NativeMessageBox_linux.cpp"
  #include "native/juce_XWindowSystem_linux.cpp"
+ #include "native/juce_XInput_linux.cpp"
 
  JUCE_END_IGNORE_WARNINGS_GCC_LIKE
 

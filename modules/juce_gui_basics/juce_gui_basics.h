@@ -114,6 +114,16 @@
  #define JUCE_USE_XCURSOR 1
 #endif
 
+/** Config: JUCE_USE_XINPUT
+    Uses XInput (v2.2+) to allow multitouch on Linux. This is best left turned on unless you
+    have a good reason to disable it.
+    The availability of XInput v2.2+ is queried at runtime so your users do not need to have
+    XInput installed for your JUCE app to run.
+*/
+#ifndef JUCE_USE_XINPUT
+ #define JUCE_USE_XINPUT 1
+#endif
+
 /** Config: JUCE_WIN_PER_MONITOR_DPI_AWARE
     Enables per-monitor DPI awareness on Windows 8.1 and above.
 */
@@ -188,6 +198,7 @@ namespace juce
 #include "mouse/juce_MouseInputSource.h"
 #include "mouse/juce_MouseEvent.h"
 #include "keyboard/juce_KeyPress.h"
+#include "keyboard/juce_RawKeyEvent.hpp"
 #include "keyboard/juce_KeyListener.h"
 #include "components/juce_ComponentTraverser.h"
 #include "components/juce_FocusTraverser.h"
